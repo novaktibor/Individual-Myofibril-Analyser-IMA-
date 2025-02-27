@@ -470,7 +470,7 @@ width_CH_option_menu.pack(side=tk.TOP, padx=10, pady=5)
 
 
 # Add label and entry for linkerRad
-linkerRad_entry_Label = tk.Label(Ch_selection_frame, text="PSF????:")
+linkerRad_entry_Label = tk.Label(Ch_selection_frame, text="PSF:")
 linkerRad_entry_Label.pack(side=tk.TOP, padx=10, pady=5)  # Pack the label
 
 linkerRad_entry = tk.Entry(Ch_selection_frame)
