@@ -3,7 +3,7 @@
 
 Required python version 3.12.8 and the following packeges: Pandas (version 2.2.3 tested), Matplotlib (version 3.9.3 tested), Numpy (version 2.2.0 tested), Opencv-python (version 4.10.0.84 tested), Aicsimageio (version 4.14 tested), aicspylibczi (version 3.2.0 tested), openpyxl (version 3.1.5 tested)
 
-Or use the following command to install packages: `pip install --requirement requirements.txt`
+You can use the following command to install packages: `pip install --requirement requirements.txt` or if you are not familiar with Python, please refer to the User Guide for detailed installation instructions
 
 # Key Features:
 
