@@ -56,6 +56,9 @@ def calculate_convolution_function(dX, linkerRad, locPrecision, linkerType, Gaus
     else:
         raise ValueError('Unknown linker type')
 
-    f = np.mean(f_array, axis=0)
+    # Beware!!
+    # the python version will work with single "locPrecision" value, and not a vector of "locPrecisions" like the Matlab version
+    #f = np.mean(f_array, axis=1)
+    f = f_array
 
     return f, convRad_N

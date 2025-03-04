@@ -78,8 +78,6 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
     modelFunc_Y_convolved_binned, _ = calculateDensityDistribution(x, modelFunctionSettings, modelFunctionStruct)
 
     # Passing the histogram counts of the original data
-    # TODO!!!!
-    # histCounts = histogramStruct['histCounts']
     histCounts = histogramStruct['values']
 
     # Residual of the fitted model function

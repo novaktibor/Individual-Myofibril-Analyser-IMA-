@@ -4,9 +4,11 @@ from lineDiameter_fit_tools.model_function_sampling import boundaries as boundar
 from lineDiameter_fit_tools.model_function_sampling import points as points
 
 def sampling_centers(sampling_settings):
-    sampling_settings['convRad_N'] = 0
+    binningRegion = sampling_settings['binningRegion']
+    sampling_N = sampling_settings['sampling_N']
+    convRad_N= 0
     model_func_samp_boundaries_left, model_func_samp_boundaries_right, sampling_dx = boundaries(
-        sampling_settings['binningRegion'], sampling_settings['sampling_N'], sampling_settings['convRad_N']
+        binningRegion, sampling_N, convRad_N
     )
     model_func_x = (model_func_samp_boundaries_left + model_func_samp_boundaries_right) / 2
     return model_func_x

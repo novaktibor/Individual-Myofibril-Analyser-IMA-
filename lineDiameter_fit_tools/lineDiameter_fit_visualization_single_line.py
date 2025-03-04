@@ -56,9 +56,6 @@ def plot_distribution(histogram_struct, model_function_parameters, model_setting
     plt.ylabel('Localization density [1/nm]')
     plt.legend()
     
-    # TODO!!!
-    plt.show()
-    #plt.close(fitted_hist_figure)
     return fitted_hist_figure
 
 def single_line(histogram_struct, model_function_parameters, model_settings, dens_func_width_fitted, dens_func_bg_fitted, FVAL):

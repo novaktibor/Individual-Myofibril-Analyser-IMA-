@@ -6,8 +6,6 @@ from lineDiameter_fit_tools.calculate_convolution_function import calculate_conv
 from lineDiameter_fit_tools.getInitialParameters_singleLine import getInitialParameters_singleLine
 from lineDiameter_fit_tools.lineDiameterFitting import lineDiameterFitting
 
-from lineDiameter_fit_tools.lineDiameter_fit_visualization_single_line import single_line as lineDiameter_fit_visualization_single_line
-
 def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncType, linkerRad):
     """
     Fits a single rectangular model function to histogram data to estimate a line's width.
@@ -160,8 +158,6 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
         'xall': [],  # Additional visualization data
         'perpendicular_lines': []  # Additional visualization data
     }
-
-    lineDiameter_fit_visualization_single_line(histogramStruct, fittedParameters, modelFunctionStruct, densFuncWidth_fitted, densFuncBG_fitted, FVAL)
 
     # Return the fitted line width and additional fitting data
     return densFuncWidth_fitted, FigData
