@@ -30,7 +30,7 @@ def lineDiameterFitting(histogramStruct, modelFunctionStruct, algorithm, fitting
             return residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList)
 
         # Perform optimization using scipy.optimize.minimize
-        result = minimize(objective_function, initialParameters, method='nelder-mead', options=options) ### method='nelder-mead' ez hozott a matalbb kóddal megegyező eredményt ##
+        result = minimize(objective_function, initialParameters, method='nelder-mead', options=options) ### method='nelder-mead' ez hozott a Matlab kóddal megegyező eredményt ##
 
         # Extract the fitted parameters and the function value at the minimum
         fittedParamsVect = result.x

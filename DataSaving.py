@@ -23,7 +23,7 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
 
     allpeakdistancesNM = []
     FirstSheetData = pd.DataFrame()
-    SecoundSheetData = pd.DataFrame()
+    SecondSheetData = pd.DataFrame()
     ThirdSheetData = pd.DataFrame()
     FourthSheetData = pd.DataFrame()
 
@@ -96,14 +96,14 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
         SinglefileData = pd.concat([peakcordsNM, peakdistancesNM], axis=1)
 
         # Concatenate the DataFrame with the existing data
-        if SecoundSheetData is None:
-            SecoundSheetData = SinglefileData
+        if SecondSheetData is None:
+            SecondSheetData = SinglefileData
         else:
-            SecoundSheetData = pd.concat([SecoundSheetData, SinglefileData], axis=1)
+            SecondSheetData = pd.concat([SecondSheetData, SinglefileData], axis=1)
 
             if i == num_files - 1:
                 meanpeakdistance = pd.concat(allpeakdistancesNM).mean()
-                SecoundSheetData = pd.concat([SecoundSheetData, meanpeakdistance], axis=1)
+                SecondSheetData = pd.concat([SecondSheetData, meanpeakdistance], axis=1)
 
 
     #for WidthData, filename in zip(AllWidthData, Allfilename):
@@ -171,7 +171,7 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
 
         # Saving sequentially to separate sheets
         save_data_to_multiple_sheets(output_file, "LengthHistogram", FirstSheetData)
-        save_data_to_multiple_sheets(output_file, "LengthResults", SecoundSheetData)
+        save_data_to_multiple_sheets(output_file, "LengthResults", SecondSheetData)
 
         if what_to_process == "Length and Width":
             save_data_to_multiple_sheets(output_file, "WidthHistogram", ThirdSheetData)
