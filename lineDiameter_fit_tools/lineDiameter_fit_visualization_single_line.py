@@ -11,8 +11,8 @@ def plot_distribution(histogram_struct, model_function_parameters, model_setting
     """
     
     # Passing the settings
-    hist_counts = histogram_struct['values']
-    hist_edges = histogram_struct['coordinates']
+    hist_counts = histogram_struct['histCounts']
+    hist_edges = histogram_struct['histEdges']
     hist_x = (hist_edges[:-1] + hist_edges[1:]) / 2
     model_func_type = model_settings['modelFuncType']
     sampling_settings = model_settings['samplingSettings']
@@ -55,6 +55,7 @@ def plot_distribution(histogram_struct, model_function_parameters, model_setting
     plt.xlabel('Distance [nm]')
     plt.ylabel('Localization density [1/nm]')
     plt.legend()
+    plt.grid(True)
     
     return fitted_hist_figure
 
@@ -62,8 +63,8 @@ def single_line(histogram_struct, model_function_parameters, model_settings, den
     fitted_hist_figure = plot_distribution(histogram_struct, model_function_parameters, model_settings)
     
     # Passing the settings
-    hist_counts = histogram_struct['values']
-    hist_edges = histogram_struct['coordinates']
+    hist_counts = histogram_struct['histCounts']
+    hist_edges = histogram_struct['histEdges']
     
     # The parameters that determine the standard deviation of the convolution function
     loc_precision = model_settings['convolutionSettings']['locPrecision']

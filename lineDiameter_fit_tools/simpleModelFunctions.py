@@ -41,19 +41,45 @@ def circle(model_function_settings, sampling_settings):
     return model_func_y, area
 
 def disk(model_function_settings, sampling_settings):
+    """
+    This function describes the projection of a disk-like structure (solid cylinder).
+    Samples the model function by integrating it over the sampling bins.
+
+    Parameters:
+    - modelFunctionSettings: Settings of the model function.
+    - samplingSettings: Settings for sampling.
+
+    Returns:
+    - modelFunc_Y: Model function values.
+    """
+
+    # Parameters of the model function
+    # Converting the FWHM (of projection of the disk) to the disk radius
     radius = model_function_settings['width'] / np.sqrt(3)
+    # Center of the disk
     position = model_function_settings['position']
+    
+    # Get the sampling points
     model_func_samp_boundaries_left, model_func_samp_boundaries_right, sampling_dx = boundaries(
         sampling_settings['binningRegion'], sampling_settings['sampling_N'], sampling_settings['convRad_N']
     )
+    
+    # Check which boundary points are affected by the model function
+    # and calculate the polar angle of the boundary points
     theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right = circle_preparation(
         radius, model_func_samp_boundaries_left, model_func_samp_boundaries_right, position
     )
+    
+    # Initialize the model function
     model_func_y = np.zeros_like(model_func_samp_boundaries_left)
+    
+    # Model function sampling values where the sampling region is fully within the rectangle
     model_func_y[samp_x_within_bool] = radius**2 * (
         (theta_left[samp_x_within_bool] - np.sin(2 * theta_left[samp_x_within_bool]) / 2) -
         (theta_right[samp_x_within_bool] - np.sin(2 * theta_right[samp_x_within_bool]) / 2)
     )
+    
+    # Model function sampling values where the sampling region is only partially within the rectangle
     if bound_idx_left != bound_idx_right:
         model_func_y[bound_idx_left] = radius**2 * (np.pi - (theta_right[bound_idx_left] - np.sin(2 * theta_right[bound_idx_left]) / 2))
         model_func_y[bound_idx_right] = radius**2 * (theta_left[bound_idx_right] - np.sin(2 * theta_left[bound_idx_right]) / 2)
@@ -66,8 +92,10 @@ def disk(model_function_settings, sampling_settings):
         central_bin_value = 2 * fi_central / np.pi + sampling_dx * sampling_settings['sampling_N'] * radius * np.cos(fi_central)
     else:
         central_bin_value = 1
+        
     area = model_function_settings['height'] / central_bin_value
     model_func_y *= area
+    
     return model_func_y, area
 
 def gaussian(model_function_settings, sampling_settings):
@@ -136,6 +164,9 @@ def circle_preparation(circle_rad, model_func_samp_boundaries_left, model_func_s
     # Angle value for the boundary points outside the circle, should be the same for the "left" and "right" boundary points
     theta_outside_value = 0  # Let it be
     
+    circle_rad_original = circle_rad
+    circle_rad = max(circle_rad, 3)
+    
     # Finding which left boundaries are within the circle
     samp_x_within_bool_left = np.zeros_like(model_func_samp_boundaries_left, dtype=bool)
     samp_x_within_bool_left[(model_func_samp_boundaries_left > -circle_rad + position) & (model_func_samp_boundaries_left < circle_rad + position)] = True
@@ -158,5 +189,8 @@ def circle_preparation(circle_rad, model_func_samp_boundaries_left, model_func_s
     # Indices of the left and right sampling points of the circle where the sampling region is only partly within the circle
     bound_idx_left = np.where(~samp_x_within_bool_left & samp_x_within_bool_right)[0]
     bound_idx_right = np.where(samp_x_within_bool_left & ~samp_x_within_bool_right)[0]
+    
+    if bound_idx_left.size == 0 or  bound_idx_right.size == 0:
+        a  =7
     
     return theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right

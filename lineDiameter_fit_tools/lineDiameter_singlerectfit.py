@@ -34,8 +34,8 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
     histEdges = np.transpose(histHandler['BinEdges'])
 
     histogramStruct = {
-        'values': histCounts,
-        'coordinates': histEdges
+        'histCounts': histCounts,
+        'histEdges': histEdges
     }
 
     # Configure parameters for further sampling of the model function

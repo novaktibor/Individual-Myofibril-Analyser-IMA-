@@ -6,6 +6,15 @@ def bin_model_function(model_func_y_convolved, sampling_n, bin_refinement):
     function over the histogram bins. The histogram bins must be equally sized.
     The integration is a simple average of the model function sampling points
     belonging to the different bins.
+    
+    Parameters:
+    - model_func_y_convolved: Model function values after convolution.
+    - sampling_n: Number of refined sampling points.
+    - bin_refinement: Refinement factor for binning.
+
+    Returns:
+    - modelFunc_Y_convolved_binned: Model function integrated over the bins.
+    
     """
     
     # Number of the original histogram bins

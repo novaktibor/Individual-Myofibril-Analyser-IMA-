@@ -44,14 +44,13 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
 
     # Configure parameters for further sampling of the model function
     binRefinement = 10  # Refinement factor for finer sampling
-    histBinN, binningRegion, sampling_N = modelFunctionSampling_settings(histEdges, binRefinement)
+    binningRegion, sampling_N = modelFunctionSampling_settings(histEdges, binRefinement)
 
     samplingSettings = {
         'binningRegion': binningRegion,  # The region over which the model is sampled
         'sampling_N': sampling_N,  # Number of points for sampling
         'binRefinement': binRefinement,  # Refinement factor
         'convRad_N': [],  # Placeholder for convolution radius
-        'histBinN': histBinN  # Original histogram bin count
     }
 
     # Initial parameters for the model function
@@ -185,12 +184,6 @@ def modelFunctionSampling_dX(binningRegion, sampling_N):
     pass
 
 
-
-
-
-
-
-
 def modelFunctionSampling_settings(histEdges, binRefinement):
     """
         This function determines how the model function should be
@@ -218,10 +211,77 @@ def modelFunctionSampling_settings(histEdges, binRefinement):
     # Size of this region:
     binningRegion = [histEdges[0], histEdges[-1]]
 
-    return histBinN, binningRegion, sampling_N
+    return binningRegion, sampling_N
+
+def modelFunctionSampling_boundaries(binningRegion, sampling_N, convRad_N):
+    """
+    This function returns the left and the right boundaries of the sampling bins (the
+    regions belonging to each sampling points) of the model function.
+    They are determined from the histogram of the original data
+    and from the radius of the convolution function (in number of sampling points) that the
+    model function shall be convolved.
+
+    Parameters:
+    - binningRegion: Tuple containing the region for binning.
+    - sampling_N: Number of sampling points.
+    - convRad_N: Radius of the convolution function in number of sampling points.
+
+    Returns:
+    - samplingBoundaries_left: Left boundaries of the sampling bins.
+    - samplingBoundaries_right: Right boundaries of the sampling bins.
+    - sampling_dX: Size of the sampling bins.
+    """
+
+    # Calculate the size of the sampling bins
+    sampling_dX = (binningRegion[1] - binningRegion[0]) / sampling_N
+
+    # Calculate the number of boundaries
+    samplingBoundaries_N = sampling_N + 2 * convRad_N + 1
+
+    # Determine the sampling region
+    samplingRegion = [binningRegion[0] - convRad_N * sampling_dX, binningRegion[1] + convRad_N * sampling_dX]
+
+    # Generate the boundaries
+
+    samplingBoundaries_N = int(samplingBoundaries_N)  # Convert to integer if it's a floating-point value
+    samplingBoundaries = np.linspace(samplingRegion[0], samplingRegion[1], samplingBoundaries_N)
+
+    # Calculate the left and right boundaries of the bins
+    samplingBoundaries_left = samplingBoundaries[:-1]
+    samplingBoundaries_right = samplingBoundaries[1:]
+
+    return samplingBoundaries_left, samplingBoundaries_right, sampling_dX
+
+def modelFunctionSampling_points(binningRegion, sampling_N, convRad_N):
+    """
+    This function returns the centers, the numbers, and the sizes of the sampling bins of the model function.
+    They are determined from the histogram of the original data and from the radius of the convolution
+    (in number of sampling points) function that the model function shall be convolved.
+
+    Parameters:
+    - binningRegion: Tuple containing the region for binning.
+    - sampling_N: Number of sampling points.
+    - convRad_N: Radius of the convolution function in number of sampling points.
+
+    Returns:
+    - sampling_X: Centers of the refined bins.
+    - sampling_dX: Sizes of the sampling bins.
+    - sampling_extended_N: Number of sampling points.
+    """
+
+    # Calculate the boundaries of the sampling bins
+    samplingBoundaries_left, samplingBoundaries_right, sampling_dX = modelFunctionSampling_boundaries(binningRegion, sampling_N, convRad_N)
+
+    # Calculate the sampling coordinates (centers of the refined bins)
+    sampling_X = (samplingBoundaries_left + samplingBoundaries_right) / 2
+
+    # Number of sampling points
+    sampling_extended_N = len(sampling_X)
+
+    return sampling_X, sampling_dX, sampling_extended_N
 
 
-def calculateConvolutionFunction(modelFunc_sampling_dX, linkerRad, locPrecision, linkerType, GaussianConvSigma):
+def calculateConvolutionFunction(dX, linkerRad, locPrecision, linkerType, GaussianConvSigma):
     """
         This function calculates the function with which the dye density should be
         convolved in order to compare it with the measured histogram data. This
@@ -262,10 +322,10 @@ def calculateConvolutionFunction(modelFunc_sampling_dX, linkerRad, locPrecision,
 
     t_min = -t_max
 
-    convRad_N = np.floor(np.ceil((t_max - t_min) / modelFunc_sampling_dX) / 2)
+    convRad_N = np.floor(np.ceil((t_max - t_min) / dX) / 2)
     conv_N = int(2 * convRad_N + 1)
 
-    t = np.linspace(-convRad_N * modelFunc_sampling_dX, convRad_N * modelFunc_sampling_dX, conv_N)
+    t = np.linspace(-convRad_N * dX, convRad_N * dX, conv_N)
 
     if linkerType == 'sphere':
         if linkerRad != 0:
@@ -279,11 +339,13 @@ def calculateConvolutionFunction(modelFunc_sampling_dX, linkerRad, locPrecision,
     else:
         raise ValueError('Unknown linker type')
 
-    # Reshape f_array to a column vector
-    f_array = f_array.reshape(-1, 1)
 
-    # Calculate the mean along the second dimension (columns)
-    f = np.mean(f_array, axis=1)
+    # Beware!!
+    # the python version will work with single "locPrecision" value, and not a vector of "locPrecisions" like the Matlab version
+    # Reshape f_array to a column vector
+    # f_array = f_array.reshape(-1, 1)
+    #f = np.mean(f_array, axis=1)
+    f = f_array
 
     return f, convRad_N
 
@@ -393,7 +455,7 @@ def lineDiameterFitting(histogramStruct, modelFunctionStruct, algorithm, fitting
             return residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList)
 
         # Perform optimization using scipy.optimize.minimize
-        result = minimize(objective_function, initialParameters, method='nelder-mead', options=options) ### method='nelder-mead' ez hozott a matalbb kóddal megegyező eredményt ##
+        result = minimize(objective_function, initialParameters, method='nelder-mead', options=options) ### method='nelder-mead' ez hozott a Matlab kóddal megegyező eredményt ##
 
         # Extract the fitted parameters and the function value at the minimum
         fittedParamsVect = result.x
@@ -425,19 +487,16 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
     """
 
     # Passing the settings of the model function
-    sampleType = modelFunctionStruct['sampleType']
-    modelFuncType = modelFunctionStruct['modelFuncType']
     modelFunctionSettings = modelFunctionStruct['modelFunctionSettings']
-    samplingSettings = modelFunctionStruct['samplingSettings']
-    convolutionSettings = modelFunctionStruct['convolutionSettings']
+
+    modelFunctionStruct['backgroundFlag'] = False
 
     # Update parameters to fit
     for idxParameter, param in enumerate(fittingParameterList):
         modelFunctionSettings[param] = x[idxParameter]
 
     # Values of the model function
-    modelFunc_Y_convolved_binned = calculateDensityDistribution(sampleType, modelFuncType, modelFunctionSettings,
-                                                                samplingSettings, convolutionSettings)
+    modelFunc_Y_convolved_binned, _ = calculateDensityDistribution(x, modelFunctionSettings, modelFunctionStruct)
 
     # Passing the histogram counts of the original data
     histCounts = histogramStruct['histCounts']
@@ -447,125 +506,15 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
 
     return res
 
-def boundaries(binningRegion, sampling_N, convRad_N):
-    """
-    This function returns the left and the right boundaries of the sampling bins (the
-    regions belonging to each sampling points) of the model function.
-    They are determined from the histogram of the original data
-    and from the radius of the convolution function (in number of sampling points) that the
-    model function shall be convolved.
-
-    Parameters:
-    - binningRegion: Tuple containing the region for binning.
-    - sampling_N: Number of sampling points.
-    - convRad_N: Radius of the convolution function in number of sampling points.
-
-    Returns:
-    - samplingBoundaries_left: Left boundaries of the sampling bins.
-    - samplingBoundaries_right: Right boundaries of the sampling bins.
-    - sampling_dX: Size of the sampling bins.
-    """
-
-    # Calculate the size of the sampling bins
-    sampling_dX = (binningRegion[1] - binningRegion[0]) / sampling_N
-
-    # Calculate the number of boundaries
-    samplingBoundaries_N = sampling_N + 2 * convRad_N + 1
-
-    # Determine the sampling region
-    samplingRegion = [binningRegion[0] - convRad_N * sampling_dX, binningRegion[1] + convRad_N * sampling_dX]
-
-    # Generate the boundaries
-
-    samplingBoundaries_N = int(samplingBoundaries_N)  # Convert to integer if it's a floating-point value
-    samplingBoundaries = np.linspace(samplingRegion[0], samplingRegion[1], samplingBoundaries_N)
-
-    # Calculate the left and right boundaries of the bins
-    samplingBoundaries_left = samplingBoundaries[:-1]
-    samplingBoundaries_right = samplingBoundaries[1:]
-
-    return samplingBoundaries_left, samplingBoundaries_right, sampling_dX
-
-def modelFunctionSampling_points(binningRegion, sampling_N, convRad_N):
-    """
-    This function returns the centers, the numbers, and the sizes of the sampling bins of the model function.
-    They are determined from the histogram of the original data and from the radius of the convolution
-    (in number of sampling points) function that the model function shall be convolved.
-
-    Parameters:
-    - binningRegion: Tuple containing the region for binning.
-    - sampling_N: Number of sampling points.
-    - convRad_N: Radius of the convolution function in number of sampling points.
-
-    Returns:
-    - sampling_X: Centers of the refined bins.
-    - sampling_dX: Sizes of the sampling bins.
-    - sampling_extended_N: Number of sampling points.
-    """
-
-    # Calculate the boundaries of the sampling bins
-    samplingBoundaries_left, samplingBoundaries_right, sampling_dX = boundaries(binningRegion, sampling_N, convRad_N)
-
-    # Calculate the sampling coordinates (centers of the refined bins)
-    sampling_X = (samplingBoundaries_left + samplingBoundaries_right) / 2
-
-    # Number of sampling points
-    sampling_extended_N = len(sampling_X)
-
-    return sampling_X, sampling_dX, sampling_extended_N
-
-
-def lineDiameter_fit_visualization_plotDistribution(histogramStruct, modelFunctionStruct):
-    # Passing the settings:
-    histCounts = histogramStruct['histCounts']
-    histEdges = histogramStruct['histEdges']
-    hist_X = (histEdges[:-1] + histEdges[1:]) / 2
-    sampleType = modelFunctionStruct['sampleType']
-    modelFuncType = modelFunctionStruct['modelFuncType']
-    modelFunctionSettings = modelFunctionStruct['modelFunctionSettings']
-    samplingSettings = modelFunctionStruct['samplingSettings']
-    convolutionSettings = modelFunctionStruct['convolutionSettings']
-    linkerType = convolutionSettings['linkerType']
-
-    # Calculate the values of the fitted distribution (convolved model function)
-    sample_Y_convolved_fitted = calculateDensityDistribution(sampleType, modelFuncType, modelFunctionSettings,
-                                                              samplingSettings, convolutionSettings)
-
-    # Do not extend the region for the unconvolved model function
-    samplingSettings['convRad_N'] = 0
-
-    # Sampling without the extended region (because of the convolution)
-    binningRegion = samplingSettings['binningRegion']
-    sampling_N = samplingSettings['sampling_N']
-    modelFunc_sampling_X_binningRegion = modelFunctionSampling_points(binningRegion, sampling_N,
-                                                                      samplingSettings['convRad_N'])
-
-    # Set convolution function to 1 and other settings
-    convolutionSettings['convFunc'] = 1
-    samplingSettings['binRefinement'] = 1
-    samplingSettings['histBinN'] = len(modelFunc_sampling_X_binningRegion)
-    sample_Y_fitted = calculateDensityDistribution(sampleType, modelFuncType, modelFunctionSettings,
-                                                   samplingSettings, convolutionSettings)
-
-    # Plot the fitted model function and the histogram data of the measured distances
-    plt.figure(figsize=(8, 6))
-    plt.hist(histEdges, bins=histEdges, weights=histCounts, alpha=0.7, color='blue', edgecolor='black')
-    plt.plot(modelFunc_sampling_X_binningRegion, sample_Y_fitted, linewidth=1.5, color='red',
-             label='Fitted Model Function')
-    plt.plot(hist_X, sample_Y_convolved_fitted, color=[0.9290, 0.6940, 0.1250], linewidth=1.5,
-             label='Fitted Convolved Function')
-
-    plt.title(f"Hist of distances, {modelFuncType} fit, {linkerType} linker")
-    plt.xlabel('distance [nm]')
-    plt.ylabel('N of localizations')
-    plt.legend()
-    plt.grid(True)
-    #plt.show()
-    plt.clf()
-
-# You would need to define the following functions to match the MATLAB code:
-# calculateDensityDistribution()
-# modelFunctionSampling_points()
+def sampling_centers(sampling_settings):
+    binningRegion = sampling_settings['binningRegion']
+    sampling_N = sampling_settings['sampling_N']
+    convRad_N= 0
+    model_func_samp_boundaries_left, model_func_samp_boundaries_right, sampling_dx = modelFunctionSampling_boundaries(
+        binningRegion, sampling_N, convRad_N
+    )
+    model_func_x = (model_func_samp_boundaries_left + model_func_samp_boundaries_right) / 2
+    return model_func_x
 
 def circlePreparation(circleRad, modelFunc_sampBoundaries_left, modelFunc_sampBoundaries_right, position):
     """
@@ -613,7 +562,7 @@ def circlePreparation(circleRad, modelFunc_sampBoundaries_left, modelFunc_sampBo
 
     return theta_left, theta_right, sampXWithinBool, boundIdx_left, boundIdx_right
 
-def model_functions_disk(modelFunctionSettings, samplingSettings):
+def model_functions_disk(model_function_settings, sampling_settings):
     """
     This function describes the projection of a disk-like structure (solid cylinder).
     Samples the model function by integrating it over the sampling bins.
@@ -628,37 +577,51 @@ def model_functions_disk(modelFunctionSettings, samplingSettings):
 
     # Parameters of the model function
     # Converting the FWHM (of projection of the disk) to the disk radius
-    radius = modelFunctionSettings['width'] / np.sqrt(3)
+    radius = model_function_settings['width'] / np.sqrt(3)
     # Center of the disk
-    position = modelFunctionSettings['position']
-
+    position = model_function_settings['position']
+    
     # Get the sampling points
-    modelFunc_sampBoundaries_left, modelFunc_sampBoundaries_right, _ = boundaries(samplingSettings['binningRegion'], samplingSettings['sampling_N'], samplingSettings['convRad_N'])
-
+    model_func_samp_boundaries_left, model_func_samp_boundaries_right, sampling_dx = modelFunctionSampling_boundaries(
+        sampling_settings['binningRegion'], sampling_settings['sampling_N'], sampling_settings['convRad_N']
+    )
+    
     # Check which boundary points are affected by the model function
     # and calculate the polar angle of the boundary points
-    theta_left, theta_right, sampXWithinBool, boundIdx_left, boundIdx_right = circlePreparation(radius, modelFunc_sampBoundaries_left, modelFunc_sampBoundaries_right, position)
-
+    theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right = circlePreparation(
+        radius, model_func_samp_boundaries_left, model_func_samp_boundaries_right, position
+    )
+    
     # Initialize the model function
-    modelFunc_Y = np.zeros_like(modelFunc_sampBoundaries_left)
-
+    model_func_y = np.zeros_like(model_func_samp_boundaries_left)
+    
     # Model function sampling values where the sampling region is fully within the rectangle
-    modelFunc_Y[sampXWithinBool] = radius**2 * ((theta_left[sampXWithinBool] - np.sin(2 * theta_left[sampXWithinBool]) / 2) - (theta_right[sampXWithinBool] - np.sin(2 * theta_right[sampXWithinBool]) / 2))
-
+    model_func_y[samp_x_within_bool] = radius**2 * (
+        (theta_left[samp_x_within_bool] - np.sin(2 * theta_left[samp_x_within_bool]) / 2) -
+        (theta_right[samp_x_within_bool] - np.sin(2 * theta_right[samp_x_within_bool]) / 2)
+    )
+    
     # Model function sampling values where the sampling region is only partially within the rectangle
-    if boundIdx_left != boundIdx_right:
-        modelFunc_Y[boundIdx_left] = radius**2 * (np.pi - (theta_right[boundIdx_left] - np.sin(2 * theta_right[boundIdx_left]) / 2))
-        modelFunc_Y[boundIdx_right] = radius**2 * (theta_left[boundIdx_right] - np.sin(2 * theta_left[boundIdx_right]) / 2)
+    if bound_idx_left != bound_idx_right:
+        model_func_y[bound_idx_left] = radius**2 * (np.pi - (theta_right[bound_idx_left] - np.sin(2 * theta_right[bound_idx_left]) / 2))
+        model_func_y[bound_idx_right] = radius**2 * (theta_left[bound_idx_right] - np.sin(2 * theta_left[bound_idx_right]) / 2)
     else:
-        modelFunc_Y[boundIdx_right] = radius**2 * np.pi
+        model_func_y[bound_idx_right] = radius**2 * np.pi
+    model_func_y /= (radius**2 * np.pi)
+    model_func_y /= sampling_dx
+    if sampling_dx * sampling_settings['sampling_N'] / 2 < radius:
+        fi_central = np.arcsin(sampling_dx * sampling_settings['sampling_N'] / 2 / radius)
+        central_bin_value = 2 * fi_central / np.pi + sampling_dx * sampling_settings['sampling_N'] * radius * np.cos(fi_central)
+    else:
+        central_bin_value = 1
+        
+    area = model_function_settings['height'] / central_bin_value
+    model_func_y *= area
+    
+    return model_func_y, area
 
-    # Normalize the model function
-    modelFunc_Y = modelFunc_Y / (radius**2 * np.pi)
 
-    return modelFunc_Y
-
-
-def calculateModelFunction(sample_type, model_func_type, model_function_settings, sampling_settings):
+def calculateModelFunction(sample_type, model_func_type, model_function_settings, sampling_settings, background_flag):
     """
     This function calculates the model function to be fit on the histogram data
     of the measurement. This model function shall be convolved and binned
@@ -677,17 +640,20 @@ def calculateModelFunction(sample_type, model_func_type, model_function_settings
     # Model function prior to the convolution
     if sample_type == 'single line':
         if model_func_type == 'Disk':
-            modelFunc_Y = model_functions_disk(model_function_settings, sampling_settings)
+            modelFunc_Y, _ = model_functions_disk(model_function_settings, sampling_settings)
 
         else:
             raise ValueError('Invalid model function was given.')
     else:
         raise ValueError('Unknown sample type')
 
+    if background_flag:
+        background_level = model_function_parameters['background']
+        model_func_y += background_level
+
     return modelFunc_Y
 
-def convolveModelFunction\
-                (modelFunc_Y, convFunc, modelFunc_dX):
+def convolveModelFunction(modelFunc_Y, convFunc, modelFunc_dX):
     """
     This function performs numerical convolution on the model function with a convolution function.
 
@@ -714,166 +680,187 @@ def convolveModelFunction\
     return modelFunc_Y_convolved
 
 
-def setArea(modelFunc_Y, modelFunc_sampling_dX, area, background):
+def binModelFunction(model_func_y_convolved, sampling_n, bin_refinement):
+    """
+    This function numerically averages the localization density model
+    function over the histogram bins. The histogram bins must be equally sized.
+    The integration is a simple average of the model function sampling points
+    belonging to the different bins.
+    
+    Parameters:
+    - model_func_y_convolved: Model function values after convolution.
+    - sampling_n: Number of refined sampling points.
+    - bin_refinement: Refinement factor for binning.
+
+    Returns:
+    - modelFunc_Y_convolved_binned: Model function integrated over the bins.
+    
+    """
+    
+    # Number of the original histogram bins
+    hist_bin_n = sampling_n // bin_refinement
+    
+    if hist_bin_n * bin_refinement != sampling_n:
+        raise ValueError('The model function sampling number and the histogram bin refinement are inconsistent, check them.')
+    
+    # Indices of the model function values belonging to the first bin
+    int_indices_first_bin = np.arange(bin_refinement)
+    
+    # For each bin, these values need to be added to the aforementioned indices
+    # to get the indices of the model function values belonging to the bins
+    int_indices_bin_increment = (np.arange(hist_bin_n) * bin_refinement).reshape(-1, 1)
+    
+    # Indices of the model function values belonging to the bins
+    lin_indices_for_pixelization = int_indices_first_bin + int_indices_bin_increment
+    
+    # Model function values integrated over the bins
+    model_func_y_convolved_binned = np.mean(model_func_y_convolved[lin_indices_for_pixelization], axis=1)
+    
+    return model_func_y_convolved_binned
+
+def calculateDensityDistribution(data_coordinates, model_function_parameters, model_settings):
+    """
+    This function calculates the model function to be fit on the histogram
+    data of the measurement. First, calls a function that calculates the
+    function values of the supposed binding site density, then convolves it
+    with the inaccuracies arising from the localization precision and the
+    linker length, finally numerically integrates it over the histogram bins.
+    """
+    
+    # Unfolding the model settings
+    sample_type = model_settings['sampleType']
+    model_func_type = model_settings['modelFuncType']
+    sampling_settings = model_settings['samplingSettings']
+    convolution_settings = model_settings['convolutionSettings']
+    background_flag = model_settings['backgroundFlag']
+
+    # Calculate the convolution function
+    gaussian_conv_sigma = model_function_parameters['GaussianConvSigma']
+    sampling_settings, convolution_settings = update_convolution_settings(sampling_settings, convolution_settings, gaussian_conv_sigma)
+
+    # Model function prior to the convolution
+    model_func_y = calculateModelFunction(sample_type, model_func_type, model_function_parameters, sampling_settings, background_flag)
+
+    # Convolution
+    model_func_sampling_dx = modelFunctionSampling_dX(sampling_settings['binningRegion'], sampling_settings['sampling_N'])
+    conv_func = convolution_settings['convFunc']
+    model_func_y_convolved = convolveModelFunction(model_func_y, conv_func, model_func_sampling_dx)
+
+    # Numerical Averaging of the convolved model density function, for comparison with the measured histogram density data
+    model_func_y_convolved_binned = binModelFunction(model_func_y_convolved, sampling_settings['sampling_N'], sampling_settings['binRefinement'])
+
+    # Set the model function height or its area under the curve
+    if 'area' in model_function_parameters and model_function_parameters['area']:
+        model_func_y_convolved_binned, scaling = set_area(model_func_y_convolved_binned, model_function_parameters['area'])
+    elif 'convolvedHeight' in model_function_parameters and model_function_parameters['convolvedHeight']:
+        model_func_y_convolved_binned, scaling = set_maximum(model_func_y_convolved_binned, model_function_parameters['convolvedHeight'])
+    else:
+        scaling = 1
+
+    return model_func_y_convolved_binned, scaling
+
+def update_convolution_settings(sampling_settings, convolution_settings, gaussian_conv_sigma):
+    if not convolution_settings['iterGaussianConvBool']:
+        # In this case, the convolution function should already be calculated, prior to the iteration
+        pass
+    else:
+        # For calculating the convolution function within the iteration
+        model_func_sampling_dx = modelFunctionSampling_dX(sampling_settings['binningRegion'], sampling_settings['sampling_N'])
+        conv_func, conv_rad_n = calculateConvolutionFunction(model_func_sampling_dx, convolution_settings['linkerRad'], convolution_settings['locPrecision'], convolution_settings['linkerType'], gaussian_conv_sigma)
+        
+        convolution_settings['convFunc'] = conv_func
+        sampling_settings['convRad_N'] = conv_rad_n
+    
+    return sampling_settings, convolution_settings
+
+def set_area(model_func_y, area):
     """
     Changes the area under the model function to the desired value.
     The area corresponds to the area under sampled model function plus the background.
     It does not add the background to the model function, only scales it.
-
-    Parameters:
-    - modelFunc_Y: Model function values.
-    - modelFunc_sampling_dX: Size of the sampling bins.
-    - area: Desired area under the model function.
-    - background: Background values.
-
-    Returns:
-    - modelFunc_Y: Scaled model function.
     """
+    area_model_func = np.sum(model_func_y)
+    scaling = area / area_model_func
+    model_func_y = scaling * model_func_y
+    return model_func_y, scaling
 
-    # Area under the background
-    if isinstance(background, (int, float)):
-        area_background = background * len(modelFunc_Y) * modelFunc_sampling_dX
-    elif len(background) == len(modelFunc_Y):
-        area_background = np.sum(background) * modelFunc_sampling_dX
-    else:
-        raise ValueError('Invalid number of data for the background')
-
-    # Area under the model function
-    area_modelFunc = np.sum(modelFunc_Y) * modelFunc_sampling_dX
-
-    # Scaling factor for the model function
-    scaling = (area - area_background) / area_modelFunc
-
-    # Changed model function
-    modelFunc_Y = scaling * modelFunc_Y
-
-    return modelFunc_Y
-
-def setHeight(modelFunc_Y, height):
+def set_maximum(model_func_y, height):
     """
     Changes the height of the model function to the desired value.
-    The height corresponds to the sampled model function maximum value
-    without background.
-
-    Parameters:
-    - modelFunc_Y: Model function values.
-    - height: Desired height of the model function.
-
-    Returns:
-    - modelFunc_Y: Model function with adjusted height.
+    The height corresponds to the sampled model function maximum value without background.
     """
-
-    # Changed model function
-    modelFunc_Y = height / np.max(modelFunc_Y) * modelFunc_Y
-
-    return modelFunc_Y
+    scaling = height / np.max(model_func_y)
+    model_func_y = scaling * model_func_y
+    return model_func_y, scaling
 
 
-def binModelFunction(modelFunc_Y_convolved, histBinN, binRefinement):
+def lineDiameter_fit_visualization_plotDistribution(histogram_struct, model_function_parameters, model_settings):
     """
-    This function numerically integrates the model function over the
-    histogram bins. The histogram bins must be equally sized.
-    The integration is a simple average of the model function sampling points
-    belonging to the different bins.
-
-    Parameters:
-    - modelFunc_Y_convolved: Model function values after convolution.
-    - histBinN: Number of histogram bins.
-    - binRefinement: Refinement factor for binning.
-
-    Returns:
-    - modelFunc_Y_convolved_binned: Model function integrated over the bins.
+    This function plots the distribution of the histogram data and the fitted model function.
     """
+    
+    # Passing the settings
+    hist_counts = histogram_struct['histCounts']
+    hist_edges = histogram_struct['histEdges']
+    hist_x = (hist_edges[:-1] + hist_edges[1:]) / 2
+    model_func_type = model_settings['modelFuncType']
+    sampling_settings = model_settings['samplingSettings']
+    convolution_settings = model_settings['convolutionSettings']
+    linker_type = convolution_settings['linkerType']
+    
+    bin_refinement = sampling_settings['binRefinement']
+    binning_region = sampling_settings['binningRegion']
+    sampling_n = sampling_settings['sampling_N']
+    
+    # The sampling points for the calculated unbinned model functions
+    sample_x = sampling_centers(model_settings['samplingSettings'])
+    
+    # Convolved model function
+    model_settings_convolved = model_settings.copy()
+    model_settings_convolved['samplingSettings']['binRefinement'] = 1
+    
+    # Calculate the values of the fitted distribution (convolved model function)
+    sample_y_fitted_convolved, _ = calculateDensityDistribution(hist_edges, model_function_parameters, model_settings_convolved)
+    
+    # Unconvolved model function
+    sampling_dx = modelFunctionSampling_dX(binning_region, sampling_n)
+    conv_rad_n = sampling_settings['convRad_N']
+    conv_dirac_delta = convolution_function_dirac_delta(conv_rad_n, sampling_dx)
+    convolution_settings_dirac_delta = convolution_settings.copy()
+    convolution_settings_dirac_delta['convFunc'] = conv_dirac_delta
+    model_settings_unconvolved = model_settings_convolved.copy()
+    model_settings_unconvolved['convolutionSettings'] = convolution_settings_dirac_delta
+    
+    # Change the height of the (unbinned) model function to that of the original histogram
+    sample_y_fitted_unconvolved, _ = calculateDensityDistribution(hist_edges, model_function_parameters, model_settings_unconvolved)
+    
+    # Visualization
+    fitted_hist_figure = plt.figure()
+    plt.hist(hist_x, bins=hist_edges, weights=hist_counts, alpha=0.7, label='Histogram Data')
+    plt.plot(sample_x, sample_y_fitted_unconvolved, linewidth=1.5, color='red', label='Unconvolved Model Function')
+    plt.plot(sample_x, sample_y_fitted_convolved, color=[0.9290, 0.6940, 0.1250], linewidth=2.5, label='Convolved Model Function')
+    
+    plt.title(f'Hist of distances, {model_func_type} fit, {linker_type} linker')
+    plt.xlabel('Distance [nm]')
+    plt.ylabel('Localization density [1/nm]')
+    plt.legend()
+    plt.grid(True)
+    
+    return fitted_hist_figure
 
-    # Indices of the model function values belonging to the first bin
-    intIndices_firstBin = np.arange(binRefinement)
-
-    # For each bin, these values need to be added to the first bin indices
-    # to get the indices of the model function values belonging to the bins
-    intIndices_binIncrement = ((np.arange(histBinN)[:, np.newaxis] - 1) * binRefinement)
-
-    # Indices of the model function values belonging to the bins
-    linIndices_forPixelization = intIndices_firstBin + intIndices_binIncrement
-
-    # Constants for the numerical integration
-    numIntConstant = np.ones_like(linIndices_forPixelization) / binRefinement
-
-    # Model function values integrated over the bins
-    modelFunc_Y_convolved_binned = np.sum(numIntConstant * modelFunc_Y_convolved[linIndices_forPixelization], axis=1)
-
-    return modelFunc_Y_convolved_binned
-
-def calculateDensityDistribution(sampleType, modelFuncType, modelFunctionSettings, samplingSettings, convolutionSettings):
-    # Calculate the convolution function
-    modelFunc_sampling_dX = modelFunctionSampling_dX(samplingSettings['binningRegion'], samplingSettings['sampling_N'])
-
-    if not convolutionSettings['iterGaussianConvBool']:
-        # Convolution function already calculated prior to iteration
-        convFunc = convolutionSettings['convFunc']
-        convRad_N = samplingSettings['convRad_N']
-    else:
-        # Calculate convolution function within the iteration
-        GaussianConvSigma = modelFunctionSettings['GaussianConvSigma']
-        convFunc, convRad_N = calculateConvolutionFunction(modelFunc_sampling_dX, convolutionSettings['linkerRad'],
-                                                           convolutionSettings['locPrecision'],
-                                                           convolutionSettings['linkerType'], GaussianConvSigma)
-        samplingSettings['convRad_N'] = convRad_N
-
-    # Model function prior to convolution
-    modelFunc_Y = calculateModelFunction(sampleType, modelFuncType, modelFunctionSettings, samplingSettings)
-
-    # Convolution
-    modelFunc_Y_convolved = convolveModelFunction(modelFunc_Y, convFunc, modelFunc_sampling_dX)
-
-    # Convolve the background
-    background = modelFunctionSettings['background']
-    if np.size(background) == 1:  # If background is a scalar
-        background_convolved = background
-    elif np.size(background) == len(modelFunc_Y):  # If background has the same number of elements as modelFunc_Y
-        background_convolved = convolveModelFunction(background, convFunc, modelFunc_sampling_dX)
-    else:
-        raise ValueError('Invalid number of data points of the background.')
-
-    # Set the model function height or its area under the curve
-    if 'height' in modelFunctionSettings and 'area' in modelFunctionSettings:
-        raise ValueError('Please give only the desired height or the desired area of the model function, not both.')
-
-    if 'height' in modelFunctionSettings:
-        modelFunc_Y_convolved = setHeight(modelFunc_Y_convolved, modelFunctionSettings['height'])
-    elif 'height1' in modelFunctionSettings:
-        modelFunc_Y_convolved = setHeight(modelFunc_Y_convolved,
-                                                         max(modelFunctionSettings['height1'],
-                                                             modelFunctionSettings['height2']))
-    elif 'area' in modelFunctionSettings:
-        modelFunc_Y_convolved = setArea(modelFunc_Y_convolved, modelFunc_sampling_dX,
-                                                       modelFunctionSettings['area'], background_convolved)
-    elif 'gapDepth' in modelFunctionSettings:
-        modelFunc_Y_convolved = setHeight(modelFunc_Y_convolved,
-                                                         modelFunctionSettings['background'] +
-                                                         modelFunctionSettings['gapDepth'] +
-                                                         modelFunctionSettings['rimHeight'])
-    else:
-        raise ValueError('Either height or area value has to be given for the model function.')
-
-    # Add the background
-    modelFunc_Y_convolved += background_convolved
-
-    # Numerical integration of the convolved model function for comparison with the measured histogram data
-    modelFunc_Y_convolved_binned = binModelFunction(modelFunc_Y_convolved, samplingSettings['histBinN'],
-                                                    samplingSettings['binRefinement'])
-
-    return modelFunc_Y_convolved_binned
-
-# You would need to define the following functions to match the MATLAB code:
-# modelFunctionSampling_dX()
-# calculateConvolutionFunction()
-# calculateModelFunction()
-# convolveModelFunction()
-# modelFunctions_setHeight()
-# modelFunctions_setArea()
-# binModelFunction()
-
-
+def convolution_function_dirac_delta(conv_rad_n, model_func_sampling_dx):
+    """
+    Returns a Dirac delta function for numerical convolution with the given kernel size.
+    """
+    
+    # Number of sampling points for the convolved function, an odd number
+    conv_n = 2 * conv_rad_n + 1
+    
+    # Sampling points for the convolved function
+    f = np.zeros(conv_n)
+    f[conv_rad_n] = 1 / model_func_sampling_dx
+    
+    return f
 
 
 

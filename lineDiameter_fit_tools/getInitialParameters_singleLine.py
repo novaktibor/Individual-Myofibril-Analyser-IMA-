@@ -15,8 +15,8 @@ def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctio
         - constrains: constraints on the fitting parameters
         """
 
-    histCounts = histogramStruct['values']
-    histEdges = histogramStruct['coordinates']
+    histCounts = histogramStruct['histCounts']
+    histEdges = histogramStruct['histEdges']
     histN = len(histCounts)
     histX = (histEdges[0:-1] + histEdges[1:]) / 2
 
