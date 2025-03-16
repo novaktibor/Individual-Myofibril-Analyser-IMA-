@@ -252,33 +252,22 @@ def modelFunctionSampling_boundaries(binningRegion, sampling_N, convRad_N):
 
     return samplingBoundaries_left, samplingBoundaries_right, sampling_dX
 
-def modelFunctionSampling_points(binningRegion, sampling_N, convRad_N):
-    """
-    This function returns the centers, the numbers, and the sizes of the sampling bins of the model function.
-    They are determined from the histogram of the original data and from the radius of the convolution
-    (in number of sampling points) function that the model function shall be convolved.
 
-    Parameters:
-    - binningRegion: Tuple containing the region for binning.
-    - sampling_N: Number of sampling points.
-    - convRad_N: Radius of the convolution function in number of sampling points.
-
-    Returns:
-    - sampling_X: Centers of the refined bins.
-    - sampling_dX: Sizes of the sampling bins.
-    - sampling_extended_N: Number of sampling points.
-    """
-
-    # Calculate the boundaries of the sampling bins
-    samplingBoundaries_left, samplingBoundaries_right, sampling_dX = modelFunctionSampling_boundaries(binningRegion, sampling_N, convRad_N)
-
-    # Calculate the sampling coordinates (centers of the refined bins)
-    sampling_X = (samplingBoundaries_left + samplingBoundaries_right) / 2
-
-    # Number of sampling points
-    sampling_extended_N = len(sampling_X)
-
-    return sampling_X, sampling_dX, sampling_extended_N
+def sampling_centers(sampling_settings):
+    # Returns the centers of the sampling bins without the padding used for the convolution.
+    
+    binningRegion = sampling_settings['binningRegion']
+    sampling_N = sampling_settings['sampling_N']
+    # discard the padding
+    convRad_N = 0
+    
+    model_func_samp_boundaries_left, model_func_samp_boundaries_right, sampling_dx = modelFunctionSampling_boundaries(
+        binningRegion, sampling_N, convRad_N
+    )
+    
+    model_func_x = (model_func_samp_boundaries_left + model_func_samp_boundaries_right) / 2
+    
+    return model_func_x
 
 
 def calculateConvolutionFunction(dX, linkerRad, locPrecision, linkerType, GaussianConvSigma):
@@ -506,20 +495,12 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
 
     return res
 
-def sampling_centers(sampling_settings):
-    binningRegion = sampling_settings['binningRegion']
-    sampling_N = sampling_settings['sampling_N']
-    convRad_N= 0
-    model_func_samp_boundaries_left, model_func_samp_boundaries_right, sampling_dx = modelFunctionSampling_boundaries(
-        binningRegion, sampling_N, convRad_N
-    )
-    model_func_x = (model_func_samp_boundaries_left + model_func_samp_boundaries_right) / 2
-    return model_func_x
-
-def circlePreparation(circleRad, modelFunc_sampBoundaries_left, modelFunc_sampBoundaries_right, position):
+def circleSlicing(circle_rad, model_func_samp_boundaries_left, model_func_samp_boundaries_right, position):
     """
-    This function examines which sampling points are affected by the disk of circle pattern.
-
+    This function "slices" the circle by the sampling bins, i.e. it finds
+    angles belonging to the sampling boundaries that falls within a circle.
+    It is later used for calculating the areas of segments.
+    
     Parameters:
     - circleRad: Radius of the circle.
     - modelFunc_sampBoundaries_left: Left boundaries of the sampling bins.
@@ -533,39 +514,40 @@ def circlePreparation(circleRad, modelFunc_sampBoundaries_left, modelFunc_sampBo
     - boundIdx_left: Indices of the left sampling points of the circle where the sampling region is only partly within the circle.
     - boundIdx_right: Indices of the right sampling points of the circle where the sampling region is only partly within the circle.
     """
-
     # Angle value for the boundary points outside the circle, should be the same for the "left" and "right" boundary points
-    thetaOutsideValue = 0  # Let it be
-
+    theta_outside_value = 0  # Let it be
+    
     # Finding which left boundaries are within the circle
-    sampXWithinBool_left = np.logical_and(modelFunc_sampBoundaries_left > -circleRad + position, modelFunc_sampBoundaries_left < circleRad + position)
-
+    samp_x_within_bool_left = np.zeros_like(model_func_samp_boundaries_left, dtype=bool)
+    samp_x_within_bool_left[(model_func_samp_boundaries_left > -circle_rad + position) & (model_func_samp_boundaries_left < circle_rad + position)] = True
+    
     # Polar angle for the left boundary points
-    theta_left = np.zeros_like(modelFunc_sampBoundaries_left)
-    theta_left[~sampXWithinBool_left] = thetaOutsideValue
-    theta_left[sampXWithinBool_left] = np.arccos((modelFunc_sampBoundaries_left[sampXWithinBool_left] - position) / circleRad)
-
+    theta_left = np.full_like(model_func_samp_boundaries_left, theta_outside_value, dtype=float)
+    theta_left[samp_x_within_bool_left] = np.arccos((model_func_samp_boundaries_left[samp_x_within_bool_left] - position) / circle_rad)
+    
     # Finding which right boundaries are within the circle
-    sampXWithinBool_right = np.logical_and(modelFunc_sampBoundaries_right > -circleRad + position, modelFunc_sampBoundaries_right < circleRad + position)
-
+    samp_x_within_bool_right = np.zeros_like(model_func_samp_boundaries_right, dtype=bool)
+    samp_x_within_bool_right[(model_func_samp_boundaries_right > -circle_rad + position) & (model_func_samp_boundaries_right < circle_rad + position)] = True
+    
     # Polar angle for the right boundary points
-    theta_right = np.zeros_like(modelFunc_sampBoundaries_right)
-    theta_right[~sampXWithinBool_right] = thetaOutsideValue
-    theta_right[sampXWithinBool_right] = np.arccos((modelFunc_sampBoundaries_right[sampXWithinBool_right] - position) / circleRad)
-
+    theta_right = np.full_like(model_func_samp_boundaries_right, theta_outside_value, dtype=float)
+    theta_right[samp_x_within_bool_right] = np.arccos((model_func_samp_boundaries_right[samp_x_within_bool_right] - position) / circle_rad)
+    
     # Boolean vector for the sampling points within the circle
-    sampXWithinBool = np.logical_and(sampXWithinBool_left, sampXWithinBool_right)
-
+    samp_x_within_bool = samp_x_within_bool_left & samp_x_within_bool_right
+    
     # Indices of the left and right sampling points of the circle where the sampling region is only partly within the circle
-    boundIdx_left = np.where(np.logical_and(~sampXWithinBool_left, sampXWithinBool_right))[0]
-    boundIdx_right = np.where(np.logical_and(sampXWithinBool_left, ~sampXWithinBool_right))[0]
-
-    return theta_left, theta_right, sampXWithinBool, boundIdx_left, boundIdx_right
+    bound_idx_left = np.where((model_func_samp_boundaries_left <= -circle_rad + position) & (model_func_samp_boundaries_right > -circle_rad + position))[0]
+    bound_idx_right = np.where((model_func_samp_boundaries_right >= circle_rad + position) & (model_func_samp_boundaries_left < circle_rad + position))[0]
+    
+    return theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right
 
 def model_functions_disk(model_function_settings, sampling_settings):
     """
     This function describes the projection of a disk-like structure (solid cylinder).
-    Samples the model function by integrating it over the sampling bins.
+    It samples the density model function with sampling bins and
+    returns an upscaled (whose height is increased to a requested value)
+    density function.
 
     Parameters:
     - modelFunctionSettings: Settings of the model function.
@@ -588,7 +570,7 @@ def model_functions_disk(model_function_settings, sampling_settings):
     
     # Check which boundary points are affected by the model function
     # and calculate the polar angle of the boundary points
-    theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right = circlePreparation(
+    theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right = circleSlicing(
         radius, model_func_samp_boundaries_left, model_func_samp_boundaries_right, position
     )
     
@@ -603,19 +585,33 @@ def model_functions_disk(model_function_settings, sampling_settings):
     
     # Model function sampling values where the sampling region is only partially within the rectangle
     if bound_idx_left != bound_idx_right:
+        # leftmost bin (segment angles of pi and theta_right[bound_idx_left])
         model_func_y[bound_idx_left] = radius**2 * (np.pi - (theta_right[bound_idx_left] - np.sin(2 * theta_right[bound_idx_left]) / 2))
+        # rightmost bin (segment angles of theta_left[bound_idx_right] and 0)
         model_func_y[bound_idx_right] = radius**2 * (theta_left[bound_idx_right] - np.sin(2 * theta_left[bound_idx_right]) / 2)
     else:
         model_func_y[bound_idx_right] = radius**2 * np.pi
-    model_func_y /= (radius**2 * np.pi)
-    model_func_y /= sampling_dx
-    if sampling_dx * sampling_settings['sampling_N'] / 2 < radius:
-        fi_central = np.arcsin(sampling_dx * sampling_settings['sampling_N'] / 2 / radius)
-        central_bin_value = 2 * fi_central / np.pi + sampling_dx * sampling_settings['sampling_N'] * radius * np.cos(fi_central)
-    else:
-        central_bin_value = 1
         
+    # normalize the model function to unit area
+    model_func_y /= (radius**2 * np.pi)
+    
+    # calculate the density
+    model_func_y /= sampling_dx
+    
+    # the "height" should scale up the model function by its central bin density as it were placed exactly in the middle
+    if 2 * radius > sampling_dx:
+        # average density of the central bin
+        fi_central = np.arcsin(sampling_dx / 2 / radius)
+        central_bin_value = (2 * fi_central * radius**2 + sampling_dx * radius * np.cos(fi_central))/(radius**2*np.pi)/sampling_dx
+    else:
+        # if model function width is smaller the sampling bins, take the whole normalized model function for the density calculation
+        central_bin_value = 1 / sampling_dx
+    
+    # check: before the upscaling, the model function should be normalized:
+    # np.sum(model_func_y) * sampling_dx == 1
+    
     area = model_function_settings['height'] / central_bin_value
+    
     model_func_y *= area
     
     return model_func_y, area
@@ -648,8 +644,8 @@ def calculateModelFunction(sample_type, model_func_type, model_function_settings
         raise ValueError('Unknown sample type')
 
     if background_flag:
-        background_level = model_function_parameters['background']
-        model_func_y += background_level
+        background_level = model_function_settings['background']
+        modelFunc_Y += background_level
 
     return modelFunc_Y
 
@@ -824,7 +820,7 @@ def lineDiameter_fit_visualization_plotDistribution(histogram_struct, model_func
     
     # Unconvolved model function
     sampling_dx = modelFunctionSampling_dX(binning_region, sampling_n)
-    conv_rad_n = sampling_settings['convRad_N']
+    conv_rad_n = int(sampling_settings['convRad_N'])
     conv_dirac_delta = convolution_function_dirac_delta(conv_rad_n, sampling_dx)
     convolution_settings_dirac_delta = convolution_settings.copy()
     convolution_settings_dirac_delta['convFunc'] = conv_dirac_delta
@@ -842,7 +838,7 @@ def lineDiameter_fit_visualization_plotDistribution(histogram_struct, model_func
     
     plt.title(f'Hist of distances, {model_func_type} fit, {linker_type} linker')
     plt.xlabel('Distance [nm]')
-    plt.ylabel('Localization density [1/nm]')
+    plt.ylabel('Intensity [Counts/nm^2???]')
     plt.legend()
     plt.grid(True)
     
