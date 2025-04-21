@@ -790,11 +790,8 @@ def set_maximum(model_func_y, height):
     return model_func_y, scaling
 
 
-def lineDiameter_fit_visualization_plotDistribution(histogram_struct, model_function_parameters, model_settings):
-    """
-    This function plots the distribution of the histogram data and the fitted model function.
-    """
-    
+def visualization_calculate(histogram_struct, model_function_parameters, model_settings):
+
     # Passing the settings
     hist_counts = histogram_struct['histCounts']
     hist_edges = histogram_struct['histEdges']
@@ -803,21 +800,21 @@ def lineDiameter_fit_visualization_plotDistribution(histogram_struct, model_func
     sampling_settings = model_settings['samplingSettings']
     convolution_settings = model_settings['convolutionSettings']
     linker_type = convolution_settings['linkerType']
-    
+
     bin_refinement = sampling_settings['binRefinement']
     binning_region = sampling_settings['binningRegion']
     sampling_n = sampling_settings['sampling_N']
-    
+
     # The sampling points for the calculated unbinned model functions
     sample_x = sampling_centers(model_settings['samplingSettings'])
-    
+
     # Convolved model function
     model_settings_convolved = model_settings.copy()
     model_settings_convolved['samplingSettings']['binRefinement'] = 1
-    
+
     # Calculate the values of the fitted distribution (convolved model function)
     sample_y_fitted_convolved, _ = calculateDensityDistribution(hist_edges, model_function_parameters, model_settings_convolved)
-    
+
     # Unconvolved model function
     sampling_dx = modelFunctionSampling_dX(binning_region, sampling_n)
     conv_rad_n = int(sampling_settings['convRad_N'])
@@ -826,9 +823,19 @@ def lineDiameter_fit_visualization_plotDistribution(histogram_struct, model_func
     convolution_settings_dirac_delta['convFunc'] = conv_dirac_delta
     model_settings_unconvolved = model_settings_convolved.copy()
     model_settings_unconvolved['convolutionSettings'] = convolution_settings_dirac_delta
-    
+
     # Change the height of the (unbinned) model function to that of the original histogram
     sample_y_fitted_unconvolved, _ = calculateDensityDistribution(hist_edges, model_function_parameters, model_settings_unconvolved)
+
+    return sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved
+
+
+def visualization_plotDistribution(histogram_struct, model_function_parameters, model_settings):
+    """
+    This function plots the distribution of the histogram data and the fitted model function.
+    """
+    
+    sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = visualization_calculate(histogram_struct, model_function_parameters, model_settings)
     
     # Visualization
     fitted_hist_figure = plt.figure()

@@ -317,8 +317,8 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
 
 
             # Calculating data for the plotting
-            histEdges, histCounts, modelFunc_sampling_X_binningRegion, sample_Y_fitted, hist_X, sample_Y_convolved_fitted, modelFuncType, linkerType = plotDistribution(
-                histogramStruct, modelFunctionStruct)
+            # TODO: finer sampling for the unconvolved??
+            sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = WidthCalculation.visualization_calculate(histogram_struct, model_function_parameters, model_settings)
 
             # Passing the settings
             histCounts = histogramStruct['histCounts']
@@ -363,13 +363,14 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
 
 
             #Plotting the data
+            modelFuncType = modelFunctionStruct['modelFuncType']
 
             plt.subplot(subplotrowcount, subplotcolumncount, i + 1)
 
             plt.hist(histEdges[:-1], bins=histEdges, weights=histCounts, edgecolor='black', alpha=0.5)
-            plt.plot(modelFunc_sampling_X_binningRegion, sample_Y_fitted, linewidth=1.5, color='red',
+            plt.plot(sample_x, sample_y_fitted_unconvolved, linewidth=1.5, color='red',
                     label='Fitted Model Function')
-            plt.plot(hist_X, sample_Y_convolved_fitted, color=[0.9290, 0.6940, 0.1250], linewidth=1.5,
+            plt.plot(sample_x, sample_y_fitted_convolved, color=[0.9290, 0.6940, 0.1250], linewidth=1.5,
                     label='Fitted Convolved Function')
             plt.title(f'Hist of distances, {modelFuncType} fit, {linkerType} linker, {b}')
             plt.xlabel('distance [nm]')
@@ -395,6 +396,7 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
 #Calculating data for the width figures
 
 def plotDistribution(histogramStruct, modelFunctionStruct):
+# Deprecated!!!
     # Extracting settings
     histCounts = histogramStruct['histCounts']
     histEdges = histogramStruct['histEdges']
@@ -415,13 +417,8 @@ def plotDistribution(histogramStruct, modelFunctionStruct):
     # Do not extend the region for the unconvolved model function
     samplingSettings['convRad_N'] = 0
 
-    # Sampling without the extended region (because of the convolution)
-    binningRegion = samplingSettings['binningRegion']
-    sampling_N = samplingSettings['sampling_N']
-    modelFunc_sampling_X_binningRegion = WidthCalculation.modelFunctionSampling_points(binningRegion, sampling_N,
-                                                                                          samplingSettings['convRad_N'])
+    modelFunc_sampling_X_binningRegion = WidthCalculation.sampling_centers(samplingSettings)
 
-    modelFunc_sampling_X_binningRegion = modelFunc_sampling_X_binningRegion[0]
     # Calculate the model function
     convolutionSettings['convFunc'] = 1
     samplingSettings['binRefinement'] = 1
@@ -430,6 +427,14 @@ def plotDistribution(histogramStruct, modelFunctionStruct):
     sample_Y_fitted = WidthCalculation.calculateDensityDistribution(sampleType, modelFuncType, modelFunctionSettings,
                                                                        samplingSettings,
                                                                        convolutionSettings)
+    model_function_parameters = modelFunctionStruct['modelFunctionSettings']
+    model_settings = {}
+    model_settings['sampleType'] = modelFunctionStruct['sampleType']
+    model_settings['modelFuncType'] = modelFunctionStruct['modelFuncType']
+    model_settings['samplingSettings'] = modelFunctionStruct['samplingSettings']
+    model_settings['convolutionSettings'] = modelFunctionStruct['convolutionSettings']
+    bmodel_settings['backgroundFlag'] = convolutionSettings['linkerType']
+    sample_Y_fitted, _ = WidthCalculation.calculateDensityDistribution(modelFunc_sampling_X_binningRegion, model_function_parameters, model_settings)
 
     return histEdges, histCounts, modelFunc_sampling_X_binningRegion, sample_Y_fitted, hist_X, sample_Y_convolved_fitted, modelFuncType, linkerType
 
