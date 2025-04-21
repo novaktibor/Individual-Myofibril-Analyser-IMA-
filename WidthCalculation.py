@@ -845,7 +845,7 @@ def visualization_plotDistribution(histogram_struct, model_function_parameters, 
     
     plt.title(f'Hist of distances, {model_func_type} fit, {linker_type} linker')
     plt.xlabel('Distance [nm]')
-    plt.ylabel('Intensity [Counts/nm^2???]')
+    plt.ylabel('Intensity [Counts/nm]')
     plt.legend()
     plt.grid(True)
     
