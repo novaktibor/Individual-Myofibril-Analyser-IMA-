@@ -97,7 +97,7 @@ def select_files():
 
 
 
-#### This function is called when the process button is pressed this contains the intial steps and the other function calls ####
+#### This function is called when the process button is pressed this contains the initial steps and the other function calls ####
 def initial_process(filepathz, files_to_process, processing_mode_var, what_to_process, filecount, allWidthData, AllLengthData, Allfilename, readingmode, user_definedPSF):
 
 
@@ -117,7 +117,7 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
         # checking if the pixel has the same size in both direction otherwise the evaluation is impossible
         if img.physical_pixel_sizes.Y == img.physical_pixel_sizes.X:
 
-            #getting the pixel site from the metadate to use it later
+            # getting the pixel site from the metadate to use it later
             pixel_size = img.physical_pixel_sizes.Y # returns the Y dimension pixel size as found in the metadata
             pixel_size = pixel_size * 1000 #Convert it to nm
 
@@ -125,7 +125,7 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
             raise ValueError('Invalid pixel size. Pixel is not a square')
 
 
-        #Manual or automatic CH selection based on the checkbox adn input
+        # Manual or automatic CH selection based on the checkbox adn input
         if manual_CH_Selection_var.get() == 1:
 
             lengthch = int(length_CH_var.get())
@@ -140,29 +140,29 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
             sumphall = np.sum(phallch, axis=2)
 
 
-            # Creating a dnyamic threshold and apply it to creat a binary image
+            # Creating a dnyamic threshold and apply it to create a binary image
             thresh_aactinin, thresh_Phall = dynamic_binaryimage_creator(sumaactinin, sumphall)
 
-        # The automatic process is optimized for aActinin and phalloidin CH and it is determinde by the covered areas in the binary CH
+        # The automatic process is optimized for aActinin and phalloidin CH and it is determined by the covered areas in the binary CH
         else:
 
-            # Determine which chanel is the Aactinin
+            # Determine which channel is the Aactinin
             first_channel_data = img.get_image_data("YXZ", C=0, S=0, T=0)
             secound_channel_data = img.get_image_data("YXZ", C=1, S=0, T=0)
 
-            max_first_chanel = np.amax(first_channel_data, axis=2)  # max projection of the first chanel
+            max_first_chanel = np.amax(first_channel_data, axis=2)  # max projection of the first channel
             sum_first_chanel = np.sum(first_channel_data, axis=2)
-            max_secound_chanel = np.amax(secound_channel_data, axis=2)  # max projection of the secound chanel
+            max_secound_chanel = np.amax(secound_channel_data, axis=2)  # max projection of the second channel
             sum_secound_chanel = np.sum(secound_channel_data, axis=2)
 
-            # Creating a dnyamic threshold and apply it to creat a binary image
+            # Creating a dynamic threshold and apply it to create a binary image
             thresh_im1, thresh_im2= dynamic_binaryimage_creator(sum_first_chanel, sum_secound_chanel)
 
             # Calculating the area covered in each CH
             areacovered_first_ch = np.size(thresh_im1) - np.count_nonzero(thresh_im1)
             areacovered_secound_ch = np.size(thresh_im2) - np.count_nonzero(thresh_im2)
 
-            # The phalloidin covers more are and the Aactninn covers less area
+            # The phalloidin covers more and the Aactninn covers less area
             if areacovered_first_ch < areacovered_secound_ch:
                 aactinin_ch = img.get_image_data("YXZ", C=1, S=0, T=0)
                 max_aactinin = np.amax(aactinin_ch, axis=2)
@@ -200,7 +200,7 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
                 yall, xall, selected_centroids_Indexes, propsallLength, Change_to_Manual = ProcessingMethods.centroid_detection(thresh_aactinin, random_manual = 'not', mode = "Automatic", newStartEnd = True)
 
 
-                # Checking the neighbour points distances. If there is an outlier point itt will automaticly go to semi-manual mode, so the user can manually corect the mistake
+                # Checking the neighbour points distances. If there is an outlier point itt will automatically go to semi-manual mode, so the user can manually correct the mistake
                 outliers = ProcessingMethods.fail_safe_test(yall, xall)
 
 
@@ -230,7 +230,7 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
 
 
 
-            #Extractin the length histogram
+            # Extractin the length histogram
             histogramLength, spline_points, xystartendall = HistogramExtractors.splineFitting_histogram(yall, xall, max_aactinin, interpolate_var.get(), pixel_size)
 
             # processing the length of the sarcomeres
