@@ -318,7 +318,14 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
 
             # Calculating data for the plotting
             # TODO: finer sampling for the unconvolved??
-            sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = WidthCalculation.visualization_calculate(histogram_struct, model_function_parameters, model_settings)
+            model_function_parameters = modelFunctionStruct['modelFunctionSettings']
+            model_settings = {}
+            model_settings['sampleType'] = modelFunctionStruct['sampleType']
+            model_settings['modelFuncType'] = modelFunctionStruct['modelFuncType']
+            model_settings['samplingSettings'] = modelFunctionStruct['samplingSettings']
+            model_settings['convolutionSettings'] = modelFunctionStruct['convolutionSettings']
+            model_settings['backgroundFlag'] = modelFunctionStruct['backgroundFlag']
+            sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = WidthCalculation.visualization_calculate(histogramStruct, model_function_parameters, model_settings)
 
             # Passing the settings
             histCounts = histogramStruct['histCounts']
@@ -330,11 +337,11 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
             GaussianConvSigma = modelFunctionStruct['modelFunctionSettings']['GaussianConvSigma']
 
             # Variance of the convolution function
-            linker_type = modelFunctionStruct['convolutionSettings']['linkerType']
-            if linker_type == 'sphere':
+            linkerType = modelFunctionStruct['convolutionSettings']['linkerType']
+            if linkerType == 'sphere':
                 linker_STD = linkerRad / np.sqrt(3)
                 convFuncVar = np.mean(locPrecision) ** 2 + linker_STD ** 2 + GaussianConvSigma ** 2
-            elif linker_type == 'Gaussian':
+            elif linkerType == 'Gaussian':
                 linker_STD = linkerRad / (2 * np.sqrt(2 * np.log(2)))
                 convFuncVar = np.mean(locPrecision) ** 2 + linker_STD ** 2 + GaussianConvSigma ** 2
             else:
@@ -433,7 +440,7 @@ def plotDistribution(histogramStruct, modelFunctionStruct):
     model_settings['modelFuncType'] = modelFunctionStruct['modelFuncType']
     model_settings['samplingSettings'] = modelFunctionStruct['samplingSettings']
     model_settings['convolutionSettings'] = modelFunctionStruct['convolutionSettings']
-    bmodel_settings['backgroundFlag'] = convolutionSettings['linkerType']
+    model_settings['backgroundFlag'] = modelFunctionStruct['backgroundFlag']
     sample_Y_fitted, _ = WidthCalculation.calculateDensityDistribution(modelFunc_sampling_X_binningRegion, model_function_parameters, model_settings)
 
     return histEdges, histCounts, modelFunc_sampling_X_binningRegion, sample_Y_fitted, hist_X, sample_Y_convolved_fitted, modelFuncType, linkerType
