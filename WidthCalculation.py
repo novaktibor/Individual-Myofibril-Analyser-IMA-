@@ -96,6 +96,7 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
     # Prepare for fitting: select algorithm and parameters to be optimized
     algorithm = 'fminsearch'  # Optimization algorithm (Nelder-Mead used here)
     fittingParameterList = ['width', 'height', 'position', 'background']
+    #fittingParameterList = ['width', 'convolvedHeight', 'position', 'background']
 
     # Add Gaussian convolution sigma as a fitting parameter if iterative convolution is enabled
     if iterGaussianConvBool:
@@ -122,7 +123,8 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
 
     # Extract key fitted parameters for further use or visualization
     densFuncWidth_fitted = fittedParameters['width']  # Fitted width parameter
-    densFuncHeight_fitted = fittedParameters['height']  # Fitted height parameter
+    densFuncHeight_fitted = fittedParameters['height'] # Fitted height parameter
+    #densFuncHeight_fitted = fittedParameters['convolvedHeight']  # Fitted height parameter
     densFuncBG_fitted = fittedParameters['background']  # Fitted background level
 
     # Handle Gaussian convolution sigma depending on iterative convolution configuration
@@ -180,8 +182,8 @@ def modelFunctionSampling_dX(binningRegion, sampling_N):
     """
 
     sampling_dX = (binningRegion[1] - binningRegion[0]) / sampling_N
+
     return sampling_dX
-    pass
 
 
 def modelFunctionSampling_settings(histEdges, binRefinement):
@@ -748,8 +750,8 @@ def calculateDensityDistribution(data_coordinates, model_function_parameters, mo
     # Set the model function height or its area under the curve
     if 'area' in model_function_parameters and model_function_parameters['area']:
         model_func_y_convolved_binned, scaling = set_area(model_func_y_convolved_binned, model_function_parameters['area'])
-    elif 'convolvedHeight' in model_function_parameters and model_function_parameters['convolvedHeight']:
-        model_func_y_convolved_binned, scaling = set_maximum(model_func_y_convolved_binned, model_function_parameters['convolvedHeight'])
+    elif 'height' in model_function_parameters and model_function_parameters['height']:
+        model_func_y_convolved_binned, scaling = set_maximum(model_func_y_convolved_binned, model_function_parameters['height'])
     else:
         scaling = 1
 
