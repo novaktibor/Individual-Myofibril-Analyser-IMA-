@@ -124,7 +124,6 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
     # Extract key fitted parameters for further use or visualization
     densFuncWidth_fitted = fittedParameters['width']  # Fitted width parameter
     densFuncHeight_fitted = fittedParameters['height'] # Fitted height parameter
-    #densFuncHeight_fitted = fittedParameters['convolvedHeight']  # Fitted height parameter
     densFuncBG_fitted = fittedParameters['background']  # Fitted background level
 
     # Handle Gaussian convolution sigma depending on iterative convolution configuration
@@ -748,12 +747,13 @@ def calculateDensityDistribution(data_coordinates, model_function_parameters, mo
     model_func_y_convolved_binned = binModelFunction(model_func_y_convolved, sampling_settings['sampling_N'], sampling_settings['binRefinement'])
 
     # Set the model function height or its area under the curve
-    if 'area' in model_function_parameters and model_function_parameters['area']:
-        model_func_y_convolved_binned, scaling = set_area(model_func_y_convolved_binned, model_function_parameters['area'])
-    elif 'height' in model_function_parameters and model_function_parameters['height']:
-        model_func_y_convolved_binned, scaling = set_maximum(model_func_y_convolved_binned, model_function_parameters['height'])
-    else:
-        scaling = 1
+    #if 'area' in model_function_parameters and model_function_parameters['area']:
+    #    model_func_y_convolved_binned, scaling = set_area(model_func_y_convolved_binned, model_function_parameters['area'])
+    #elif 'height' in model_function_parameters and model_function_parameters['height']:
+    #    model_func_y_convolved_binned, scaling = set_maximum(model_func_y_convolved_binned, model_function_parameters['height'])
+    #else:
+    #    scaling = 1
+    scaling = 1
 
     return model_func_y_convolved_binned, scaling
 
@@ -771,6 +771,7 @@ def update_convolution_settings(sampling_settings, convolution_settings, gaussia
     
     return sampling_settings, convolution_settings
 
+# to be removed:
 def set_area(model_func_y, area):
     """
     Changes the area under the model function to the desired value.
@@ -782,6 +783,7 @@ def set_area(model_func_y, area):
     model_func_y = scaling * model_func_y
     return model_func_y, scaling
 
+# to be removed:
 def set_maximum(model_func_y, height):
     """
     Changes the height of the model function to the desired value.
@@ -789,6 +791,7 @@ def set_maximum(model_func_y, height):
     """
     scaling = height / np.max(model_func_y)
     model_func_y = scaling * model_func_y
+
     return model_func_y, scaling
 
 
