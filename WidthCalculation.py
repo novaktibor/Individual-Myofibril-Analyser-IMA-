@@ -96,7 +96,6 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
     # Prepare for fitting: select algorithm and parameters to be optimized
     algorithm = 'fminsearch'  # Optimization algorithm (Nelder-Mead used here)
     fittingParameterList = ['width', 'height', 'position', 'background']
-    #fittingParameterList = ['width', 'convolvedHeight', 'position', 'background']
 
     # Add Gaussian convolution sigma as a fitting parameter if iterative convolution is enabled
     if iterGaussianConvBool:
@@ -394,10 +393,6 @@ def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctio
 
     for idxParam, param in enumerate(fittingParameterList):
         if param == 'width':
-
-            valami1 = (histCounts - background)
-            valmi2 = (histX - position) ** 2
-
             initialParameters[idxParam] = 2.0 * np.sqrt(
                 np.sum(((histCounts - background) * (histX - position) ** 2)) / ((np.sum(histCounts - background) - 1)))
             constrains[idxParam, :] = [0, np.inf]
