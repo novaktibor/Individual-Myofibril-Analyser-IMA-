@@ -534,7 +534,11 @@ def circleSlicing(circle_rad, model_func_samp_boundaries_left, model_func_samp_b
     
     # Indices of the left and right sampling points of the circle where the sampling region is only partly within the circle
     bound_idx_left = np.where((model_func_samp_boundaries_left <= -circle_rad + position) & (model_func_samp_boundaries_right > -circle_rad + position))[0]
+    if bound_idx_left.size==0:
+        bound_idx_left = np.array([0])
     bound_idx_right = np.where((model_func_samp_boundaries_right >= circle_rad + position) & (model_func_samp_boundaries_left < circle_rad + position))[0]
+    if bound_idx_right.size==0:
+        bound_idx_right = np.array([model_func_samp_boundaries_right.size-1])
     
     return theta_left, theta_right, samp_x_within_bool, bound_idx_left, bound_idx_right
 
