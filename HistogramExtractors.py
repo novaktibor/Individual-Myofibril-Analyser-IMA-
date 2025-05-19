@@ -1,3 +1,4 @@
+from networkx.algorithms.non_randomness import non_randomness
 from scipy.interpolate import splprep, splev
 from scipy.stats import linregress
 import math
@@ -13,8 +14,10 @@ def perpendicular_histogram_creator(selected_x, selected_y, i, spline_points, im
 
     # Find the index of the selected centroid in the spline_points array
     # Find the index of the selected centroid in the spline_points array
-    closest_idx = np.argmin(
+    closest_idx1 = np.argmin(
         np.sqrt((spline_points[1] - centroid_x) ** 2 + (spline_points[0] - centroid_y) ** 2))
+
+    closest_idx = closest_idx1
 
     # Find the previous and next points in the spline_points
     prev_point_idx = closest_idx - 1
@@ -153,7 +156,7 @@ def perpendicular_histogram_creator(selected_x, selected_y, i, spline_points, im
     return y_startall, y_endall, x_startall,x_endall,iall, xall, line_histogram, perpendicular_lines
 
 # extract histogram for width calculation
-def extract_width_histogram_along_line(image, Centroidyall, Centroidxall, selected_centroids_Indexes, pixel_size, allWidthData, spline_points, user_definedPSF):
+def extract_width_histogram_along_line(image, Centroidyall, Centroidxall, selected_centroids_Indexes, pixel_size, allWidthData, spline_points, user_definedPSF, number, background_calc):
     allFigData = []
     sallWidthData = []
 
@@ -176,7 +179,7 @@ def extract_width_histogram_along_line(image, Centroidyall, Centroidxall, select
     # Loop through each selected centroid
     for i in range(len(selected_centroids_Indexes)):
 
-        line_length = 75
+        line_length = 40
         #Initial perpendicular line creation
         y_startall, y_endall, x_startall, x_endall, iall, xall, line_histogram, perpendicular_lines = perpendicular_histogram_creator(selected_x, selected_y,
                                                                                                  i, spline_points,
@@ -193,14 +196,15 @@ def extract_width_histogram_along_line(image, Centroidyall, Centroidxall, select
 
         line_length = count_higher_than_threshold*2
 
-        #Recrating the perpendicular line with the recalculated line length
-        y_startall, y_endall, x_startall, x_endall, iall, xall, line_histogram, perpendicular_lines = perpendicular_histogram_creator(selected_x, selected_y,
-                                                                                                 i, spline_points,
-                                                                                                 image,
-                                                                                                 perpendicular_lines,
-                                                                                                 y_startall, y_endall,
-                                                                                                 x_startall, x_endall,
-                                                                                                 line_length)
+        if number == 0:
+            #Recrating the perpendicular line with the recalculated line length
+            y_startall, y_endall, x_startall, x_endall, iall, xall, line_histogram, perpendicular_lines = perpendicular_histogram_creator(selected_x, selected_y,
+                                                                                                     i, spline_points,
+                                                                                                     image,
+                                                                                                     perpendicular_lines,
+                                                                                                     y_startall, y_endall,
+                                                                                                     x_startall, x_endall,
+                                                                                                     line_length)
 
         # Calculate iall using pixel size
         iall = [x * pixel_size for x in iall]
@@ -215,7 +219,12 @@ def extract_width_histogram_along_line(image, Centroidyall, Centroidxall, select
         histogramµm = np.column_stack((iallµm, line_histogram))
 
         # Calling the width calculation function
-        lineLength, FigData = WidthCalculation.processStart(df_intensity2, user_definedPSF)
+        if number == 0:
+            background_calc = None
+            lineLength, FigData = WidthCalculation.processStart(df_intensity2, user_definedPSF, number, background_calc, backgroundFlag=True ,multiMyofibrilFlag=False)
+        else:
+            lineLength, FigData = WidthCalculation.processStart(df_intensity2, user_definedPSF, number, background_calc, backgroundFlag=True ,multiMyofibrilFlag=True)
+
 
         xystartendall = {
             'y_startall': y_startall,
@@ -275,6 +284,7 @@ def interpolate_intensity_along_line(image, x0, y0, x1, y1, num_points=10):
     y_values = np.linspace(y0, y1, num_points)
     intensities = map_coordinates(image, [y_values, x_values], order=1)
     return x_values, y_values, intensities
+
 def splineFitting_histogram(yall, xall, max_aactinin, interpolate, pixel_size):
     # Let's say you have yall and xall containing the y and x coordinates respectively
     image_with_lines = max_aactinin.copy
@@ -305,9 +315,6 @@ def splineFitting_histogram(yall, xall, max_aactinin, interpolate, pixel_size):
     # Evaluate the spline with one point to every pixel
     u_new = np.linspace(0, 1, num=num_pixels)
     spline_points = splev(u_new, tck)
-
-
-
 
 
     # Get image dimensions
@@ -391,7 +398,7 @@ def splineFitting_histogram(yall, xall, max_aactinin, interpolate, pixel_size):
 
 
 
-            print("noInterpolate")
+            #print("noInterpolate")
 
         else:
             # Interpolated intensity values along the line
@@ -401,7 +408,7 @@ def splineFitting_histogram(yall, xall, max_aactinin, interpolate, pixel_size):
 
             intensity_profiles_interpolated.append(intensity_average_interpolated)
             intensity_profiles.append(intensity_average_interpolated)
-            print("Interpolate")
+            #print("Interpolate")
 
             # Visualization of Bresenham lines with alternating colors
         color = 'r' if i % 2 == 0 else 'g'  # Red for even, Green for odd
