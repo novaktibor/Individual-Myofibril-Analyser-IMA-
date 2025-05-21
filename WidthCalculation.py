@@ -395,8 +395,9 @@ def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctio
 
     for idxParam, param in enumerate(fittingParameterList):
         if param == 'width':
-            initialParameters[idxParam] = 2.0 * np.sqrt(
-                np.sum(((histCounts - background) * (histX - position) ** 2)) / ((np.sum(histCounts - background) - 1)))
+            # let the initial width be related to the second moment of the normalized function:
+            initialParameters[idxParam] = 2.0 * np.sqrt(np.abs(
+                np.sum(((histCounts - background) / np.sum(histCounts - background) * (histX - position)** 2))))
             constrains[idxParam, :] = [0, np.inf]
         elif param == 'area':
             initialParameters[idxParam] = np.sum(histCounts) * (histEdges[1] - histEdges[0])
