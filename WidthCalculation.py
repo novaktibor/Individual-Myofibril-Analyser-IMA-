@@ -457,6 +457,42 @@ def lineDiameterFitting(histogramStruct, modelFunctionStruct, algorithm, fitting
     return fittedParameters, FVAL
 
 
+def find_extremas(BinEdges, BinCounts):
+# Returns the indices of the maximum, the minimum left to it and right to it
+    
+    max_index = np.where(BinCounts == np.max(BinCounts))[0][0]
+    
+    data_left = BinCounts[0:max_index+1]
+    data_right = BinCounts[max_index:]
+    
+    min_index_left = np.where(data_left == np.min(data_left))[0][0]
+    
+    min_index_right = np.where(data_right == np.min(data_right))[0][-1]
+
+    return max_index, min_index_left, min_index_right
+    
+def minimum_positions(BinEdges, BinCounts):
+    
+    max_index, min_index_left, min_index_right = find_extremas(BinEdges, BinCounts)
+    
+    min_position_left = (BinEdges[min_index_left] + BinEdges[min_index_left+1])/2
+    min_position_right = (BinEdges[min_index_right] + BinEdges[min_index_right+1])/2
+    
+    return min_position_left, min_position_right
+
+def crop_histogram(BinEdges, BinCounts, modelFunction):
+# It crops the histogram data between the "left" aand "right" minimas
+    
+    max_index, min_index_left, min_index_right = find_extremas(BinEdges, BinCounts)
+
+    BinEdges_cropped = BinEdges[min_index_left:min_index_right+2]
+    
+    BinCounts_cropped = BinCounts[min_index_left:min_index_right+1]
+    modelFunction_cropped = modelFunction[min_index_left:min_index_right+1]
+    
+    return BinEdges_cropped, BinCounts_cropped, modelFunction_cropped
+
+
 def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
     """
     Calculate the residuum used for fitting the model function to the histogram original data.
@@ -482,12 +518,42 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
 
     # Values of the model function
     modelFunc_Y_convolved_binned, _ = calculateDensityDistribution(x, modelFunctionSettings, modelFunctionStruct)
-
+   
     # Passing the histogram counts of the original data
     histCounts = histogramStruct['histCounts']
 
     # Residual of the fitted model function
     res = np.sum((modelFunc_Y_convolved_binned - histCounts) ** 2) / np.sum(histCounts ** 2)
+   
+    if False:
+       
+        histEdges = histogramStruct['histEdges']
+       
+        [BinEdges_cropped, histCounts, modelFunc_Y_convolved_binned] = crop_histogram(histEdges, histCounts, modelFunc_Y_convolved_binned)
+   
+    elif False:
+        ## symmetric fit
+        
+        histEdges = histogramStruct['histEdges']
+        
+        minPosition_left, minPosition_right = minimum_positions(histEdges, histCounts)
+        
+        modelFunctionSettings_left = modelFunctionSettings;
+        modelFunctionSettings_left['position'] = minPosition_left - np.abs(minPosition_left - modelFunctionSettings['position'])
+        model_func_y_left, _ = calculateDensityDistribution(x, modelFunctionSettings_left, modelFunctionStruct)
+        
+        modelFunctionSettings_right = modelFunctionSettings;
+        modelFunctionSettings_right['position'] = minPosition_right + np.abs(minPosition_right - modelFunctionSettings['position'])
+        model_func_y_left, _ = calculateDensityDistribution(x, modelFunctionSettings_right, modelFunctionStruct)
+    
+    elif True:
+
+        normalized_error = (histCounts-modelFunc_Y_convolved_binned)**2/histCounts**2
+        threshold = 0.2**2
+        someBool = normalized_error > threshold
+        normalized_error[someBool] = threshold
+        res = np.sum(normalized_error)
+        print("DEBUG")
 
     return res
 
