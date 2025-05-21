@@ -9,8 +9,9 @@ import numpy as np
 def length_processing(histparameters):
 
     ##### Gauss function for fitting ####
-    def Gauss(x, a, x0, sigma):
-        return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
+    # Gaussian + baseline
+    def Gauss(x, a, mean, sigma, b):
+        return a * np.exp(-((x - mean) ** 2) / (2 * sigma ** 2)) + b
 
     # Empty DataFrames to collect data for later use during the image creation
     allactivepeakx = pd.DataFrame()
@@ -25,7 +26,8 @@ def length_processing(histparameters):
     # Filtering the data and searcing for the max value (later used for height of the peak) to make an easier peak finding
 
     histparametery_max = max(histparametery)
-    height_treshold = histparametery_max * 0.3
+    histparametery_min = min(histparametery)
+    height_treshold = histparametery_max * 0.3 + histparametery_min
 
     # Finding peaks based on the given data
     peaks, _ = find_peaks(histparametery, distance=30, height=height_treshold)  # finding peaks
@@ -67,11 +69,24 @@ def length_processing(histparameters):
         activepeaky = histparameters.iloc[peakindexes, [1, ]].values.flatten()
 
         # Gaussin fitting
-        mean = sum(activepeakx * activepeaky) / sum(activepeaky)
-        sigma = np.sqrt(sum(activepeaky * (activepeakx - mean) ** 2) / sum(activepeaky))
+        # Initial guesses
+        amplitude_guess = max(activepeaky) - np.min(activepeaky)
+        mean_guess = activepeakx[np.argmax(activepeaky)]
+        sigma_guess = (max(activepeakx) - min(activepeakx)) / 4
+        baseline_guess = np.min(activepeaky)
+
+        p0 = [amplitude_guess, mean_guess, sigma_guess, baseline_guess]
+
+        # Bounds for fitting: ([lower bounds], [upper bounds])
+        bounds = (
+            [0, min(activepeakx), 0, 0],
+            # Lower bounds: positive amplitude, reasonable mean, positive sigma, non-negative baseline
+            [np.inf, max(activepeakx), np.inf, np.max(activepeaky)]  # Upper bounds
+        )
 
         try:
-            popt, pcov = curve_fit(Gauss, activepeakx, activepeaky, p0=[max(activepeaky), mean, sigma], maxfev=5000)
+            # Fit the Gaussian with baseline
+            popt, pcov = curve_fit(Gauss, activepeakx, activepeaky, p0=p0, bounds=bounds, maxfev=5000)
 
         except RuntimeError:
             print("Error - curve_fit failed")
@@ -114,7 +129,6 @@ def length_processing(histparameters):
 
         # Setting up the next loop active peak
         activepeak = activepeak + 1
-
 
 
     return gauspeaks, peakdistances, histparameterx, histparametery, peakx, peaky, allactivepeakx, allgausscord
