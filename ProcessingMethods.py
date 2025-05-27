@@ -9,6 +9,67 @@ import matplotlib.pyplot as plt
 from skimage import morphology
 import tkinter as tk
 
+
+def multi_myofibril_selection(image, yall, xall, random_manual, mode):
+    """
+    Iterative centroid selection for multiple myofibrils.
+    """
+    myofibril_groups = []
+    remaining_x = list(xall)
+    remaining_y = list(yall)
+
+
+    while True:
+        # Skip if no centroids left
+        if len(remaining_x) == 0:
+            break
+
+        # Use your existing function
+        selected_indexes, change_to_manual, next_myofibril = display_and_select_centroids(
+            image, remaining_y, remaining_x, random_manual='manual', mode=mode, multiple =True,
+        )
+
+
+        if not selected_indexes and not next_myofibril:
+            break
+
+        # Step 1: Extract selected coordinates
+        x_selected = [remaining_x[i] for i in selected_indexes]
+        y_selected = [remaining_y[i] for i in selected_indexes]
+        ordered_Indexes = np.argsort(x_selected)
+        x_sorted = [x_selected[i] for i in ordered_Indexes]
+        y_sorted = [y_selected[i] for i in ordered_Indexes]
+
+        # compute new start end point for the selected centroid
+        # Compute start
+        x0, y0 = x_sorted[0], y_sorted[0]
+        x1, y1 = x_sorted[1], y_sorted[1]
+        direction_vector = np.array([x1 - x0, y1 - y0])
+        new_start_point = np.array([x0, y0]) - direction_vector / 2
+
+        # Compute end
+        x_end_1, y_end_1 = x_sorted[-1], y_sorted[-1]
+        x_end_2, y_end_2 = x_sorted[-2], y_sorted[-2]
+        direction_vector_end = np.array([x_end_1 - x_end_2, y_end_1 - y_end_2])
+        new_end_point = np.array([x_end_1, y_end_1]) + direction_vector_end / 2
+
+        # Insert into lists
+        x_sorted = [new_start_point[0]] + x_sorted + [new_end_point[0]]
+        y_sorted = [new_start_point[1]] + y_sorted + [new_end_point[1]]
+
+        # Step 4: Store for later
+        myofibril_groups.append((y_sorted, x_sorted))
+
+
+        # Remove selected from remaining
+        for i in sorted(selected_indexes, reverse=True):
+            del remaining_y[i]
+            del remaining_x[i]
+
+    return myofibril_groups
+
+
+
 ####Automatic centroid detection function (MODE 0) ####
 
 def centroid_detection(thresh_im, random_manual, mode, newStartEnd):
@@ -29,7 +90,7 @@ def centroid_detection(thresh_im, random_manual, mode, newStartEnd):
 
 
     # Define a margin distance from the image boundary
-    margin_distance = 40  # Adjust this value as needed
+    margin_distance = 15  # Adjust this value as needed
 
     # Creating empty frames for later use
     yall = []
@@ -72,7 +133,7 @@ def centroid_detection(thresh_im, random_manual, mode, newStartEnd):
 
     elif mode == "Semi_Manual":
 
-        ordered_Indexes, Change_to_Manual = display_and_select_centroids(thresh_im, yall, xall, random_manual, mode) #Display the found centroids and let the user the chose the order of these points
+        ordered_Indexes, Change_to_Manual, _ = display_and_select_centroids(thresh_im, yall, xall, random_manual, mode, multiple = False) #Display the found centroids and let the user the chose the order of these points
 
 
 
@@ -88,6 +149,7 @@ def centroid_detection(thresh_im, random_manual, mode, newStartEnd):
 
     #Creatin new start and end points in the odered length points to ensure that tho histogram doesn't start or end in the middle of a peak
     if newStartEnd == True:
+
 
         # creating a new start and new last pont
         # Extract the first two points
@@ -286,7 +348,7 @@ def select_centroids(image):
     # Return centroid coordinates
     return yall, xall
 
-def display_and_select_centroids(image, yall, xall, random_manual, mode):
+def display_and_select_centroids(image, yall, xall, random_manual, mode, multiple):
     """
     Display centroids overlaying an image and allow selection of centroids.
 
@@ -304,7 +366,11 @@ def display_and_select_centroids(image, yall, xall, random_manual, mode):
         indices = list(range(1, num_points - 1))
         # Randomly select three indices
         selected_centroids_Indexes = random.sample(indices, 3)
-        return selected_centroids_Indexes, False
+
+
+
+        return selected_centroids_Indexes, False, False
+
 
     # In manual mode, the user will choose as many centroids as they want
     if random_manual == 'manual':
@@ -370,12 +436,20 @@ def display_and_select_centroids(image, yall, xall, random_manual, mode):
         # Initialize flags
         selection_stopped = False
         Change_to_Manual = False
+        next_myofibril_triggered = False
+
+        if multiple == True:
+            def next_myofibril():
+                nonlocal next_myofibril_triggered
+                next_myofibril_triggered = True
+                root.quit()  # Close the Tkinter control window
 
         # Function to handle "Stop Selection" button click
         def stop_selection():
             nonlocal selection_stopped
             selection_stopped = True
             root.quit()  # Close the Tkinter window
+
 
         # Function to handle "Change to Manual" button click
         def change_to_manual():
@@ -391,6 +465,10 @@ def display_and_select_centroids(image, yall, xall, random_manual, mode):
         stop_button = tk.Button(root, text="Stop Selection", command=stop_selection)
         stop_button.pack()
 
+        if multiple == True:
+            next_button = tk.Button(root, text="Next Myofibril", command=next_myofibril)
+            next_button.pack()
+
         if mode == "Semi_Manual":
             Change_to_Manual_button = tk.Button(root, text="Change to Manual", command=change_to_manual)
             Change_to_Manual_button.pack()
@@ -403,7 +481,7 @@ def display_and_select_centroids(image, yall, xall, random_manual, mode):
             key = cv2.waitKey(1) & 0xFF
             root.update()  # Update the Tkinter GUI
 
-            if key == 27 or selection_stopped or Change_to_Manual:  # ESC key
+            if key == 27 or selection_stopped or next_myofibril_triggered or Change_to_Manual:
                 break
 
         # Close the OpenCV window
@@ -411,7 +489,7 @@ def display_and_select_centroids(image, yall, xall, random_manual, mode):
         root.quit()  # Stop Tkinter loop
         root.destroy()  # Close Tkinter window
 
-    return selected_centroids_Indexes, Change_to_Manual
+    return selected_centroids_Indexes, Change_to_Manual, next_myofibril_triggered
 
 
 # Function to test if any point is too close or too farawy from the others

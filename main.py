@@ -1,11 +1,9 @@
 
 import tkinter as tk
-from tkinter import Tk, Label, Entry, Button
 from tkinter import filedialog
 import aicsimageio
-import matplotlib.pyplot as plt
 from aicsimageio.readers import CziReader
-
+import matplotlib.pyplot as plt
 import numpy as np
 import LengthCalculation
 import ProcessingMethods
@@ -14,7 +12,9 @@ import DataSaving
 import os
 import pathlib
 import cv2
-
+#from sklearn.mixture import GaussianMixture
+import warnings
+from scipy.stats import mstats, skew
 
 
 
@@ -39,47 +39,128 @@ def normalize_im(im):
     return im_norm
 
 ###Binary image crator for object finding##########
-def dynamic_binaryimage_creator(first_ch, secound_ch ):
+def dynamic_binaryimage_creator(first_ch, secound_ch):
+
+    def filter_small_objects(binary, min_size=30):
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+        output = np.zeros(binary.shape, dtype=np.uint8)
+        for i in range(1, num_labels):  # skip background
+            if stats[i, cv2.CC_STAT_AREA] >= min_size:
+                output[labels == i] = 255
+        return output
 
     if first_ch.dtype != np.uint8 and secound_ch.dtype != np.uint8:
-        # Convert to 8-bit (using the may value as our scaling factor so it can convert bot 16 and 32bit to 8bit as this part is only used for obejct finding in the binary image)
         scaling_factor1 = np.max(first_ch)
         scaling_factor2 = np.max(secound_ch)
-
         first_ch = first_ch * (255.0 / scaling_factor1)
         secound_ch = secound_ch * (255.0 / scaling_factor2)
-
-        # Convert the arrays to uint8
         first_ch = first_ch.astype(np.uint8)
         secound_ch = secound_ch.astype(np.uint8)
 
-    # Apply Otsu's Thresholding with OpenCv
+    # Standard Otsu
     _, otsu_threshold1 = cv2.threshold(first_ch, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     _, otsu_threshold2 = cv2.threshold(secound_ch, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Display the results
-    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-    axs[0, 0].imshow(first_ch, cmap='gray')
-    axs[1, 0].imshow(secound_ch, cmap='gray')
-    axs[0, 1].imshow(otsu_threshold1, cmap='gray')
-    axs[1, 1].imshow(otsu_threshold2, cmap='gray')
+
+    # Denoise + Otsu (only first_ch)
+    denoised1 = cv2.fastNlMeansDenoising(first_ch, None, 15, 7, 21)
+    _, otsudenoise1 = cv2.threshold(denoised1, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    denoised2 = cv2.fastNlMeansDenoising(secound_ch, None, 15, 7, 21)
+    _, otsudenoise2 = cv2.threshold(denoised2, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Post-processing: small object removal + morphological cleanup
+    filtered1 = filter_small_objects(otsudenoise1, min_size=15)
+    cleaned1 = cv2.morphologyEx(filtered1, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+    filtered2 = filter_small_objects(otsudenoise2, min_size=20)
+    cleaned2 = cv2.morphologyEx(filtered2, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+    return cleaned1, cleaned2
+
+def backgroundestimater(im, binary_mask):
+    # Invert mask to get only background
+    background_mask = (binary_mask == 0)
+
+    # Extract background pixel values and remove zeroes
+    background_pixels = im[background_mask]
+    background_pixels = background_pixels[background_pixels > 0]
+
+    if len(background_pixels) == 0:
+        raise ValueError("No nonzero background pixels found.")
+
+    # 1. Mean
+    #background_mean = np.mean(background_pixels)
+
+    # 2. Median
+    #background_median = np.median(background_pixels)
+
+    # 3. Interquartile Mean (between 25th and 75th percentile)
+    #q25, q75 = np.percentile(background_pixels, [25, 75])
+    #iqr_pixels = background_pixels[(background_pixels >= q25) & (background_pixels <= q75)]
+    #background_iqr_mean = np.mean(iqr_pixels)
+
+    # 4. Histogram Mode Estimate
+    counts, bin_edges = np.histogram(background_pixels, bins=256)
+    mode_idx = np.argmax(counts)
+    background_mode = (bin_edges[mode_idx] + bin_edges[mode_idx + 1]) / 2
+
+    # 5. GMM Estimate (2 components, use lower mean)
+    #try:
+    #    gmm = GaussianMixture(n_components=2, random_state=0)
+    #    gmm.fit(background_pixels.reshape(-1, 1))
+    #    gmm_means = gmm.means_.flatten()
+    #    background_gmm = np.min(gmm_means)
+    #except Exception as e:
+    #    warnings.warn(f"GMM failed: {e}")
+     #   background_gmm = np.nan
+
+    # 6. Winsorized Mean (10% clipping)
+    #background_winsorized_mean = float(mstats.winsorize(background_pixels, limits=[0.1, 0.1]).mean())
+
+    # 7. Asymmetric Sigma-Clipped Mean
+    #median = np.median(background_pixels)
+    #std = np.std(background_pixels)
+    #mask_sigma = (background_pixels > (median - 1.5 * std)) & (background_pixels < (median + 1.0 * std))
+    #background_sigma_clipped = np.mean(background_pixels[mask_sigma])
+
+    # 8. Skew-corrected Mean
+    #skewness = skew(background_pixels)
+    #correction = -skewness * std * 0.1
+    #background_skew_corrected = background_mean + correction
+
+    # 9. Lowest 10% Percentile Mean
+    #low_percentile = np.percentile(background_pixels, 10)
+    #low_pixels = background_pixels[background_pixels <= low_percentile]
+    #background_lowest_mean = np.mean(low_pixels)
+
+    # 10. Multi-GMM Weighted Estimate (3 components)
+    #try:
+    #    gmm_multi = GaussianMixture(n_components=3, random_state=0)
+    #    gmm_multi.fit(background_pixels.reshape(-1, 1))
+    #    means = gmm_multi.means_.flatten()
+    #    weights = gmm_multi.weights_.flatten()
+    #    idx = np.argmax(weights / (means + 1e-5))  # prioritize low mean, high weight
+    #    background_gmm_weighted = means[idx]
+    #except Exception as e:
+    #    warnings.warn(f"Multi-GMM failed: {e}")
+    #    background_gmm_weighted = np.nan
+
+    # Print all estimates
+    #print("\n--- Background Estimations ---")
+    #print(f"Mean:                 {background_mean:.2f}")
+    #print(f"Median:               {background_median:.2f}")
+    #print(f"IQR Mean:             {background_iqr_mean:.2f}")
+    #print(f"Histogram Mode:       {background_mode:.2f}")
+    #print(f"GMM (2-comp):         {background_gmm:.2f}")
+    #print(f"Winsorized Mean:      {background_winsorized_mean:.2f}")
+    ##print(f"Sigma-Clipped Mean:   {background_sigma_clipped:.2f}")
+    #print(f"Skew-Corrected Mean:  {background_skew_corrected:.2f}")
+    #print(f"Lowest 10% Mean:      {background_lowest_mean:.2f}")
+    #print(f"GMM Weighted (3-comp):{background_gmm_weighted:.2f}")
+    #print("------------------------------\n")
 
 
-    # Optionally, you can add titles to each subplot
-    axs[0, 0].set_title('Original Image')
-    axs[1, 0].set_title('Original Image')
-
-    axs[0, 1].set_title("Otsu's Thresholding")
-    axs[1, 1].set_title("Otsu's Thresholding")
-
-    #plt.show()  #apply it so you can visualize the effect of the adaptive otsu thresholding
-    #plt.show()
-    plt.clf()
-
-
-    return otsu_threshold1, otsu_threshold2
-
-
+    return background_mode
 ############################################################################## THE MAIN PART OF THE GUI WHICH WILL START THE PROCESS   ##########################################################
 
 
@@ -87,14 +168,113 @@ def dynamic_binaryimage_creator(first_ch, secound_ch ):
 def select_files():
     file_paths = filedialog.askopenfilename(multiple=True,
                                             title='Choose a file',
-                                            filetypes=[("All Files", "*.*"),
-                                                       ("CZI, TIFF, Lif files", "*.czi, *.tiff; *.tif; *.lif"),
-                                                       ("Excel files", "*.xlsx;*.xls")])
+                                            filetypes=[("All Files", "*.*")])
 
     for file_path in file_paths:
         # Getting the path for the working folder
         file_listbox.insert(tk.END, file_path)
 
+
+def file_reading(readingmode, filepathz):
+
+    # Selecting the reader for Czi and *.tiff, *.lif
+    if readingmode == "CZI":
+        # reading the Czi file into multidimensional numpy array
+        img = CziReader(filepathz)
+    else:
+        # reading LIF, TIFF, OME-TIFF files into multidimensional numpy array
+        img = aicsimageio.AICSImage(filepathz)
+
+    # checking if the pixel has the same size in both direction otherwise the evaluation is impossible
+    if img.physical_pixel_sizes.Y == img.physical_pixel_sizes.X:
+
+        # getting the pixel site from the metadate to use it later
+        pixel_size = img.physical_pixel_sizes.Y  # returns the Y dimension pixel size as found in the metadata
+        pixel_size = pixel_size * 1000  # Convert it to nm
+
+    else:
+        raise ValueError('Invalid pixel size. Pixel is not a square')
+
+    return img, pixel_size
+
+
+def process_length_and_width(y_coords, x_coords, max_aactinin, sumphall, pixel_size, processing_mode_var, interpolate_var, AllLengthData, propsallLength, what_to_process, Allfilename, filepathz, allWidthData, user_definedPSF, background_calc, random_manual, number):
+
+    histogramLength, spline_points, xystartendall = HistogramExtractors.splineFitting_histogram(
+        y_coords, x_coords, max_aactinin, interpolate_var.get(), pixel_size)
+
+    gauspeaks, peakdistances, histparameterx, histparametery, peakx, peaky, allactivepeakx, allgausscord = \
+        LengthCalculation.length_processing(histogramLength)
+
+    LengthData = {
+        'spline_points': spline_points,
+        'histparameterx': histparameterx,
+        'histparametery': histparametery,
+        'peakx': peakx,
+        'peaky': peaky,
+        'allactivepeakx': allactivepeakx,
+        'allgausscord': allgausscord,
+        'propsallLength': propsallLength if processing_mode_var in ["Automatic", "Semi_Manual"] else None,
+        'gauspeaks': gauspeaks,
+        'peakdistances': peakdistances,
+        'histogramLength': histogramLength,
+        'xystartendall': xystartendall,
+        'pixel_size': pixel_size
+    }
+
+    # Collecting all the data into one library for later use during the excel saving
+    AllLengthData.append(LengthData)
+
+    # Getting the path for the working folder to know where to save the images
+    my_path = pathlib.Path(filepathz).parent.resolve()
+    file_name = os.path.basename(filepathz)  # filename with extension
+    filename = os.path.splitext(file_name)[0]  # filename without extension
+
+    Allfilename.append(filename)  # collecting all the filenames for the excel saving
+
+    directory = "FittedHistAndResults"  # the name of the new folder
+    path = os.path.join(my_path, directory)
+
+    if not os.path.exists(path):  # Checking if the folder already exist
+        os.mkdir(path)  # Creating the new foldar for saving images and excel
+
+    # Creating a library to stor the filename in path for later use in the data saving
+    filepath = {
+        'filename': filename,
+        'path': path,
+        'Allfilename': Allfilename
+    }
+
+    # Saving the length image
+    DataSaving.imagesave(LengthData, max_aactinin, filepath, processing_mode_var, number, mode='length')
+
+    # Creat an empty dataframe to don't get an error during the excel saving if only length is processed
+    if what_to_process == "Individual L":
+        alllWidthData = []
+
+    ###################################################### Sarcomere selection for width processing and Width calculation #######################################
+
+
+    if what_to_process == "Individual L+W" or what_to_process == "Multiple Myofbiril L+w":
+        selected_centroids_Indexes, Change_to_Manual, _ = ProcessingMethods.display_and_select_centroids(sumphall, y_coords,
+                                                                                                         x_coords,
+                                                                                                         random_manual,
+                                                                                                         mode="Width",
+                                                                                                         multiple=False)  # Display the found centroids so the user can chose which one should be evaluated in the width calculations
+
+        alllWidthData, allFigData = HistogramExtractors.extract_width_histogram_along_line(sumphall, y_coords, x_coords,
+                                                                                           selected_centroids_Indexes,
+                                                                                           pixel_size, allWidthData,
+                                                                                           spline_points, user_definedPSF, number, background_calc)
+
+        # Saving the
+        if number == 0:
+            DataSaving.imagesave(allFigData, sumphall, filepath, processing_mode_var, number, mode='width')
+        else:
+            DataSaving.imagesave(allFigData, sumphall, filepath, processing_mode_var, number, mode='width')
+        ############################################################################# SAVING DATAS INTO AN EXCEL FILE #######################################################
+
+    DataSaving.excelsaving(AllLengthData, alllWidthData, filepath, what_to_process, number)
 
 
 #### This function is called when the process button is pressed this contains the initial steps and the other function calls ####
@@ -105,27 +285,10 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
         print("Selection failed, nothing to process")
     elif filecount >= 1:
 
-        #Selecting the reader for Czi and *.tiff, *.lif
-        if readingmode == "CZI":
-            # reading the Czi file into multidimensional numpy array
-            img = CziReader(filepathz)
-        else:
-            # reading LIF, TIFF, OME-TIFF files into multidimensional numpy array
-            img = aicsimageio.AICSImage(filepathz)
+        # Reading the file and getting the pixel size
+        img, pixel_size = file_reading(readingmode, filepathz)
 
-
-        # checking if the pixel has the same size in both direction otherwise the evaluation is impossible
-        if img.physical_pixel_sizes.Y == img.physical_pixel_sizes.X:
-
-            # getting the pixel site from the metadate to use it later
-            pixel_size = img.physical_pixel_sizes.Y # returns the Y dimension pixel size as found in the metadata
-            pixel_size = pixel_size * 1000 #Convert it to nm
-
-        else:
-            raise ValueError('Invalid pixel size. Pixel is not a square')
-
-
-        # Manual or automatic CH selection based on the checkbox adn input
+        # Manual or automatic CH selection based on the checkbox and input
         if manual_CH_Selection_var.get() == 1:
 
             lengthch = int(length_CH_var.get())
@@ -180,19 +343,37 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
 
         ################################################################### LENGTH PROCESSING ######################################################
 
+        if what_to_process == "Multiple Myofbiril L+w":
 
-        if  what_to_process in ["Length and Width", "Length"]:
+            background_calc = backgroundestimater(sumphall, thresh_Phall)
+
+            # This detects the "objects" in the binary image which is created by the otsu thresholding.
+            yall, xall, selected_centroids_Indexes, propsallLength, Change_to_Manual = ProcessingMethods.centroid_detection(
+                thresh_aactinin, random_manual='not', mode="Automatic", newStartEnd=False)
+
+
+            myofibril_groups =  ProcessingMethods.multi_myofibril_selection(thresh_aactinin, yall, xall, random_manual ='manual', mode="Semi_Manual")
+
+            for i, (y_group, x_group) in enumerate(myofibril_groups):
+                print(f"Myofibril {i + 1}:")
+
+                process_length_and_width(y_group, x_group, max_aactinin, sumphall, pixel_size, processing_mode_var, interpolate_var, AllLengthData, propsallLength, what_to_process, Allfilename, filepathz, allWidthData, user_definedPSF, background_calc, random_manual = 'manual', number = i + 1)
+
+
+        elif  what_to_process in ["Individual L+W", "Individual L"]:
+
+            background_median2 = backgroundestimater(sumphall, thresh_Phall)
 
             Change_to_SemiManual = False
             Change_to_Manual = False
+            propsallLength = None
+            background_median = None
 
             # Checking the selected processing method, Automatic (default), Semi_manual or Manual
             if processing_mode_var == "Automatic": # Automatic process
-
                 # Checking for random or manual centroid selection for width calculation
                 if random_3_width_var.get() == 1:
                     random_manual = 'random'
-
                 else:
                     random_manual = 'manual'
 
@@ -200,13 +381,15 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
                 yall, xall, selected_centroids_Indexes, propsallLength, Change_to_Manual = ProcessingMethods.centroid_detection(thresh_aactinin, random_manual = 'not', mode = "Automatic", newStartEnd = True)
 
 
-                # Checking the neighbour points distances. If there is an outlier point itt will automatically go to semi-manual mode, so the user can manually correct the mistake
+                # Checking the neighbour points distances. If there is an outlier point it will automatically go to semi-manual mode, so the user can manually correct the mistake
                 outliers = ProcessingMethods.fail_safe_test(yall, xall)
 
 
                 if outliers: # If there are some outlier the program should change to semi manual mode and than the width selection is always in manual mode
                     Change_to_SemiManual = True
                     random_manual = 'manual'
+
+
 
 
             if processing_mode_var == "Semi_Manual" or Change_to_SemiManual == True: #SemiManual process
@@ -229,80 +412,9 @@ def initial_process(filepathz, files_to_process, processing_mode_var, what_to_pr
                 random_manual = 'manual' # In manual the width selection should always be manual
 
 
-
-            # Extractin the length histogram
-            histogramLength, spline_points, xystartendall = HistogramExtractors.splineFitting_histogram(yall, xall, max_aactinin, interpolate_var.get(), pixel_size)
-
-            # processing the length of the sarcomeres
-            gauspeaks, peakdistances, histparameterx, histparametery, peakx, peaky, allactivepeakx, allgausscord = LengthCalculation.length_processing(
-                histogramLength)
-
-            # Collecting essential datas for later use
-            LengthData = {
-                'spline_points': spline_points,
-                'histparameterx': histparameterx,
-                'histparametery': histparametery,
-                'peakx': peakx,
-                'peaky': peaky,
-                'allactivepeakx': allactivepeakx,
-                'allgausscord': allgausscord,
-                'propsallLength': propsallLength if processing_mode_var in ["Automatic", "Semi_Manual"] else None,
-                'gauspeaks': gauspeaks,
-                'peakdistances': peakdistances,
-                'histogramLength': histogramLength,
-                'xystartendall': xystartendall,
-                'pixel_size': pixel_size
-            }
-
-            # Collecting all the data into one library for later use during the excel saving
-            AllLengthData.append(LengthData)
-
-            # Getting the path for the working folder to know where to save the images
-            my_path = pathlib.Path(filepathz).parent.resolve()
-            file_name = os.path.basename(filepathz)  # filename with extension
-            filename = os.path.splitext(file_name)[0]  # filename without extension
-
-            Allfilename.append(filename) #collecting all the filenames for the excel saving
-
-            directory = "FittedHistAndResults" #the name of the new folder
-            path = os.path.join(my_path, directory)
-
-            if not os.path.exists(path): #Checking if the folder already exist
-                os.mkdir(path) #Creating the new foldar for saving images and excel
-
-            # Creating a library to stor the filename in path for later use in the data saving
-            filepath = {
-                'filename': filename,
-                'path': path,
-                'Allfilename': Allfilename
-            }
-
-            # Saving the length image
-            DataSaving.imagesave(LengthData, max_aactinin, filepath, processing_mode_var, mode='length')
-
-            # Creat an empty dataframe to don't get an error during the excel saving if only length is processed
-            if what_to_process == "Length":
-                alllWidthData = []
-
-            ###################################################### Sarcomere selection for width processing and Width calculation #######################################
-
-        if what_to_process == "Length and Width":
-
-
-            selected_centroids_Indexes, Change_to_Manual = ProcessingMethods.display_and_select_centroids(sumphall, yall, xall, random_manual, mode = "Width")  # Display the found centroids so the user can chose which one should be evaluated in the width calculations
-
-            alllWidthData, allFigData = HistogramExtractors.extract_width_histogram_along_line(sumphall, yall, xall,
-                                                                                               selected_centroids_Indexes,
-                                                                                               pixel_size, allWidthData,
-                                                                                               spline_points, user_definedPSF)
-
-            # Saving the image
-            DataSaving.imagesave(allFigData, sumphall, filepath, processing_mode_var, mode='width')
-
-            ############################################################################# SAVING DATAS INTO AN EXCEL FILE #######################################################
-
-
-            DataSaving.excelsaving(AllLengthData, alllWidthData, filepath, what_to_process)
+            process_length_and_width(yall, xall, max_aactinin, sumphall, pixel_size, processing_mode_var,
+                                     interpolate_var, AllLengthData, propsallLength, what_to_process, Allfilename,
+                                     filepathz, allWidthData, user_definedPSF, background_median, random_manual, number = 0)
 
         try:
             # Successful processing
@@ -502,9 +614,9 @@ what_to_process_label = tk.Label(options_frame, text="Select what to process :")
 what_to_process_label.pack(side=tk.TOP, padx=10, pady=5)
 
 what_to_process_var = tk.StringVar(root)
-what_to_process_var.set("Length and Width")  # Default value
+what_to_process_var.set("Individual L+W")  # Default value
 
-what_to_process_menu = tk.OptionMenu(options_frame, what_to_process_var, "Length and Width", "Length")
+what_to_process_menu = tk.OptionMenu(options_frame, what_to_process_var, "Individual L+W", "Individual L","Multiple Myofbiril L+w" )
 #what_to_process_menu.configure(bg='#F0EAD6')
 what_to_process_menu.pack(side=tk.TOP, padx=10, pady=5)
 

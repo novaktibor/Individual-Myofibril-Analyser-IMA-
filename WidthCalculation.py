@@ -4,13 +4,14 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import erf
 import cmath
+from scipy.signal import argrelextrema
 
+#overlap_method = "crop"
+#overlap_method = "individual"
+overlap_method = "symmetric"
+#overlap_method = "modified_weights"
 
-
-
-
-
-def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncType, linkerRad):
+def lineDiameter_singlerectfit(nubmer, background_calc, backgroundFlag, locPrecision, histHandler, linkerType, modelFuncType, linkerRad):
     """
     Fits a single rectangular model function to histogram data to estimate a line's width.
 
@@ -103,7 +104,7 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
 
     # Initialize fitting parameters and constraints
     initialParameters, constrains = getInitialParameters_singleLine(
-        histogramStruct, modelFuncType, modelFunctionParameters, fittingParameterList
+        histogramStruct, modelFuncType, modelFunctionParameters, fittingParameterList, nubmer, background_calc
     )
 
     # Configure optimization options (bounds and tolerances)
@@ -117,7 +118,8 @@ def lineDiameter_singlerectfit(locPrecision, histHandler, linkerType, modelFuncT
         fittingParameterList,
         initialParameters,
         constrains,
-        options
+        options,
+        backgroundFlag
     )
 
     # Extract key fitted parameters for further use or visualization
@@ -339,7 +341,7 @@ def calculateConvolutionFunction(dX, linkerRad, locPrecision, linkerType, Gaussi
     return f, convRad_N
 
 
-def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctionSettings, fittingParameterList):
+def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctionSettings, fittingParameterList, number, background_calc):
     """
         This function initializes the initial parameters and constraints vector for fitting a single line model function to the histogram data.
 
@@ -366,21 +368,29 @@ def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctio
     # set the background before the other parameters
     backgroundBoolVect = [param == 'background' for param in fittingParameterList]
     if 'background' in fittingParameterList:
+
         histN_forBG = histN // 8
         initialParameters[backgroundBoolVect] = np.mean(
             [np.mean(histCounts[:histN_forBG]), np.mean(histCounts[-histN_forBG:])])
+        # DEBUG
+        initialParameters[backgroundBoolVect] = np.min(histCounts)
         constrains[backgroundBoolVect, :] = [0, np.inf]
         background = initialParameters[backgroundBoolVect]
+
+
+
     else:
         if 'background' in modelFunctionSettings:
             background = modelFunctionSettings['background']
         else:
             raise ValueError('The background for the model function (single line) has to be set or to be fitted.')
 
+
     # set the central position before the other parameters
     positionBoolVect = [param == 'position' for param in fittingParameterList]
     if 'position' in fittingParameterList:
 
+        # let it be the first moment
         initialParameters[positionBoolVect] = np.sum(
             (histCounts - background) * histX / np.sum(histCounts - background))
         constrains[positionBoolVect, :] = [-np.inf, np.inf]
@@ -393,8 +403,9 @@ def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctio
 
     for idxParam, param in enumerate(fittingParameterList):
         if param == 'width':
-            initialParameters[idxParam] = 2.0 * np.sqrt(
-                np.sum(((histCounts - background) * (histX - position) ** 2)) / ((np.sum(histCounts - background) - 1)))
+            # let the initial width be related to the second moment of the normalized function:
+            initialParameters[idxParam] = 2.0 * np.sqrt(np.abs(
+                np.sum(((histCounts - background) / np.sum(histCounts - background) * (histX - position)** 2))))
             constrains[idxParam, :] = [0, np.inf]
         elif param == 'area':
             initialParameters[idxParam] = np.sum(histCounts) * (histEdges[1] - histEdges[0])
@@ -413,7 +424,7 @@ def getInitialParameters_singleLine(histogramStruct, modelFuncType, modelFunctio
     return initialParameters, constrains
 
 
-def lineDiameterFitting(histogramStruct, modelFunctionStruct, algorithm, fittingParameterList, initialParameters, constrains, options):
+def lineDiameterFitting(histogramStruct, modelFunctionStruct, algorithm, fittingParameterList, initialParameters, constrains, options, backgroundFlag):
     """
         Fit the model function to the histogram data of the measured distances.
 
@@ -437,10 +448,10 @@ def lineDiameterFitting(histogramStruct, modelFunctionStruct, algorithm, fitting
 
     if algorithm == "fminsearch":
         def objective_function(x):
-            return residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList)
+            return residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList, backgroundFlag)
 
         # Perform optimization using scipy.optimize.minimize
-        result = minimize(objective_function, initialParameters, method='nelder-mead', options=options) ### method='nelder-mead' ez hozott a Matlab kóddal megegyező eredményt ##
+        result = minimize(objective_function, initialParameters, method='nelder-mead', options=options)
 
         # Extract the fitted parameters and the function value at the minimum
         fittedParamsVect = result.x
@@ -467,7 +478,7 @@ def find_extremas(BinEdges, BinCounts):
     
     min_index_left = np.where(data_left == np.min(data_left))[0][0]
     
-    min_index_right = np.where(data_right == np.min(data_right))[0][-1]
+    min_index_right = max_index + np.where(data_right == np.min(data_right))[0][-1]
 
     return max_index, min_index_left, min_index_right
     
@@ -493,7 +504,9 @@ def crop_histogram(BinEdges, BinCounts, modelFunction):
     return BinEdges_cropped, BinCounts_cropped, modelFunction_cropped
 
 
-def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
+
+def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList, backgroundFlag):
+
     """
     Calculate the residuum used for fitting the model function to the histogram original data.
 
@@ -510,7 +523,7 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
     # Passing the settings of the model function
     modelFunctionSettings = modelFunctionStruct['modelFunctionSettings']
 
-    modelFunctionStruct['backgroundFlag'] = False
+    modelFunctionStruct['backgroundFlag'] = backgroundFlag
 
     # Update parameters to fit
     for idxParameter, param in enumerate(fittingParameterList):
@@ -522,38 +535,49 @@ def residuum(x, histogramStruct, modelFunctionStruct, fittingParameterList):
     # Passing the histogram counts of the original data
     histCounts = histogramStruct['histCounts']
 
-    # Residual of the fitted model function
-    res = np.sum((modelFunc_Y_convolved_binned - histCounts) ** 2) / np.sum(histCounts ** 2)
+    if overlap_method == "individual":
+
+        # Residual of the fitted model function
+        res = np.sum((modelFunc_Y_convolved_binned - histCounts) ** 2) / np.sum(histCounts ** 2)
    
-    if False:
+    elif overlap_method == "crop":
        
         histEdges = histogramStruct['histEdges']
        
         [BinEdges_cropped, histCounts, modelFunc_Y_convolved_binned] = crop_histogram(histEdges, histCounts, modelFunc_Y_convolved_binned)
    
-    elif False:
+        # Residual of the fitted model function
+        res = np.sum((modelFunc_Y_convolved_binned - histCounts) ** 2) / np.sum(histCounts ** 2)
+   
+    elif overlap_method == "symmetric":
         ## symmetric fit
         
         histEdges = histogramStruct['histEdges']
         
         minPosition_left, minPosition_right = minimum_positions(histEdges, histCounts)
         
-        modelFunctionSettings_left = modelFunctionSettings;
+        modelFunctionSettings_left = modelFunctionSettings.copy();
         modelFunctionSettings_left['position'] = minPosition_left - np.abs(minPosition_left - modelFunctionSettings['position'])
         model_func_y_left, _ = calculateDensityDistribution(x, modelFunctionSettings_left, modelFunctionStruct)
         
-        modelFunctionSettings_right = modelFunctionSettings;
+        modelFunctionSettings_right = modelFunctionSettings.copy();
         modelFunctionSettings_right['position'] = minPosition_right + np.abs(minPosition_right - modelFunctionSettings['position'])
-        model_func_y_left, _ = calculateDensityDistribution(x, modelFunctionSettings_right, modelFunctionStruct)
+        model_func_y_right, _ = calculateDensityDistribution(x, modelFunctionSettings_right, modelFunctionStruct)
+        modelFunc_Y_convolved_binned += model_func_y_left + model_func_y_right
     
-    elif True:
+        # Residual of the fitted model function
+        res = np.sum((modelFunc_Y_convolved_binned - histCounts) ** 2) / np.sum(histCounts ** 2)
+    
+    elif overlap_method == "modified_weights":
 
         normalized_error = (histCounts-modelFunc_Y_convolved_binned)**2/histCounts**2
-        threshold = 0.2**2
+        threshold = 0.1**2
         someBool = normalized_error > threshold
-        normalized_error[someBool] = threshold
+        normalized_error[someBool] = threshold * 1/10
         res = np.sum(normalized_error)
-        print("DEBUG")
+    else:
+        print("Invalid overlap method: ", overlap_method)
+        
 
     return res
 
@@ -794,7 +818,9 @@ def calculateDensityDistribution(data_coordinates, model_function_parameters, mo
     model_func_type = model_settings['modelFuncType']
     sampling_settings = model_settings['samplingSettings']
     convolution_settings = model_settings['convolutionSettings']
-    background_flag = model_settings['backgroundFlag']
+    #background_flag = model_settings['backgroundFlag']
+    # DEBUG
+    background_flag = False
 
     # Calculate the convolution function
     gaussian_conv_sigma = model_function_parameters['GaussianConvSigma']
@@ -900,27 +926,6 @@ def visualization_calculate(histogram_struct, model_function_parameters, model_s
     return sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved
 
 
-def visualization_plotDistribution(histogram_struct, model_function_parameters, model_settings):
-    """
-    This function plots the distribution of the histogram data and the fitted model function.
-    """
-    
-    sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = visualization_calculate(histogram_struct, model_function_parameters, model_settings)
-    
-    # Visualization
-    fitted_hist_figure = plt.figure()
-    plt.hist(hist_x, bins=hist_edges, weights=hist_counts, alpha=0.7, label='Histogram Data')
-    plt.plot(sample_x, sample_y_fitted_unconvolved, linewidth=1.5, color='red', label='Unconvolved Model Function')
-    plt.plot(sample_x, sample_y_fitted_convolved, color=[0.9290, 0.6940, 0.1250], linewidth=2.5, label='Convolved Model Function')
-    
-    plt.title(f'Hist of distances, {model_func_type} fit, {linker_type} linker')
-    plt.xlabel('Distance [nm]')
-    plt.ylabel('Intensity [Counts/nm]')
-    plt.legend()
-    plt.grid(True)
-    
-    return fitted_hist_figure
-
 def convolution_function_dirac_delta(conv_rad_n, model_func_sampling_dx):
     """
     Returns a Dirac delta function for numerical convolution with the given kernel size.
@@ -938,7 +943,7 @@ def convolution_function_dirac_delta(conv_rad_n, model_func_sampling_dx):
 
 
 # Main function to process input data and calculate line length
-def processStart(inputdata, user_definedPSF):
+def processStart(inputdata, user_definedPSF, nubmer, background_calc, backgroundFlag, multiMyofibrilFlag):
     """
     Main entry point for the program. Processes input histogram data, performs line fitting,
     and calculates line length based on modeled data.
@@ -955,14 +960,22 @@ def processStart(inputdata, user_definedPSF):
     array = array.apply(pd.to_numeric, errors='coerce')
     array = array.to_numpy()
 
+    # --- Optionally trim histogram if multiple myofibrils are present ---
+    if multiMyofibrilFlag:
+        # array_trimmed, l_idx, r_idx = trim_histogram_by_minima(array)
+        array_trimmed = array
+    else:
+        array_trimmed = array
+
+
     # Validate and process data by calculating histogram properties
-    BinWidth = array[1, 0] - array[0, 0]  # Bin width of the histogram
-    NumBins = len(array)  # Total number of bins in the histogram
-    start = array[0, 0] - BinWidth / 2  # Start edge of the first bin
-    stop = array[-1, 0] + BinWidth / 2  # End edge of the last bin
+    BinWidth = array_trimmed[1, 0] - array_trimmed[0, 0]  # Bin width of the histogram
+    NumBins = len(array_trimmed)  # Total number of bins in the histogram
+    start = array_trimmed[0, 0] - BinWidth / 2  # Start edge of the first bin
+    stop = array_trimmed[-1, 0] + BinWidth / 2  # End edge of the last bin
 
     # Generate histogram bin edges and counts
-    BinCounts = array[:, 1]  # Extract bin counts
+    BinCounts = array_trimmed[:, 1]  # Extract bin counts
     BinCountslen = np.size(BinCounts)  # Number of bins
     BinEdges = np.linspace(start, stop, num=BinCountslen + 1)
 
@@ -976,6 +989,8 @@ def processStart(inputdata, user_definedPSF):
 
     # Perform line diameter fitting using the single rectangular fit function
     densFuncWidth_fitted, FigData = lineDiameter_singlerectfit(
+        nubmer, background_calc,
+        backgroundFlag,
         locPrecision=0,
         histHandler=Histogram,
         linkerType='Gaussian',
@@ -983,8 +998,104 @@ def processStart(inputdata, user_definedPSF):
         linkerRad=user_definedPSF
     )
 
-    # Derive line length from the fitted width (FWHM)
-    # Conversion considers specific geometric proportions
-    lineLength = densFuncWidth_fitted / 1000 / 0.866025403784438
+
+    if nubmer == 0:
+        # Derive line length from the fitted width (FWHM)
+        # Conversion considers specific geometric proportions
+        lineLength = densFuncWidth_fitted / 1000 / 0.866025403784438
+
+    else:
+        new_baseline = background_calc  # Example new baseline
+        amplitude = FigData['modelFunctionStruct']['modelFunctionSettings']['height']
+        radius = FigData['modelFunctionStruct']['modelFunctionSettings']['width'] / np.sqrt(3)
+        baseline = FigData['modelFunctionStruct']['modelFunctionSettings']['background']
+
+        # Compute new disk parameters
+        new_radius_corr, fwhm_corr, new_amplitude_corr = extend_disk_fixed_peak(amplitude, radius, baseline, new_baseline)
+
+        # Generate x-range centered around the peak
+        x_center = 0
+        x_range = np.linspace(-radius * 3, radius * 3, 1000)
+
+        # Compute original and extended profiles
+        original_profile = projected_disk_profile(x_range - x_center, amplitude, radius, baseline)
+        extended_profile = projected_disk_profile(x_range - x_center, new_amplitude_corr, new_radius_corr, new_baseline)
+
+        # Plot both profiles
+        #plt.figure(figsize=(10, 5))
+        #plt.plot(x_range, original_profile, label='Original Disk Model', lw=2)
+        #plt.plot(x_range, extended_profile, label='Extended (Same Peak)', lw=2, linestyle='--')
+        #plt.axhline(y=new_baseline, color='gray', linestyle=':', label='New Baseline')
+        #plt.axhline(y=amplitude + baseline, color='black', linestyle=':', label='Peak Intensity')
+        #plt.axvline(x=-fwhm_corr / 2, color='orange', linestyle=':', label='New FWHM')
+        #plt.axvline(x=fwhm_corr / 2, color='orange', linestyle=':')
+        #plt.title('Disk Model Extension to New Baseline (Same Peak)')
+        #plt.xlabel('x')
+        #plt.ylabel('Intensity')
+        #plt.legend()
+        #plt.grid(True)
+        #plt.tight_layout()
+        #plt.show()
+
+        lineLength = fwhm_corr / 1000 / 0.866025403784438
+
+        FigData['extendedModelFunction'] = {
+            'x_range': x_range,
+            'intensity': extended_profile,
+            'fwhm': fwhm_corr,
+            'baseline': new_baseline
+        }
 
     return lineLength, FigData
+
+
+
+def trim_histogram_by_minima(array):
+    x = array[:, 0]
+    y = array[:, 1]
+    center_idx = len(x) // 2
+
+    # Split into left and right halves
+    x_left, y_left = x[:center_idx], y[:center_idx]
+    x_right, y_right = x[center_idx:], y[center_idx:]
+
+    # Find absolute minima in each half
+    left_min_idx = np.argmin(y_left)
+    right_min_idx = np.argmin(y_right) + center_idx  # adjust index
+
+    # Extend bounds by 10% of the distance
+    #width = right_min_idx - left_min_idx
+    #extension = int(0.1 * width)
+
+    ## Apply extension while staying within array bounds
+    #left_idx_ext = max(0, left_min_idx - extension)
+    #right_idx_ext = min(len(array) - 1, right_min_idx + extension)
+
+    # Trim the array
+    array_trimmed = array[left_min_idx:right_min_idx + 1]
+
+    return array_trimmed, left_min_idx, right_min_idx
+
+# Define disk model function (projected circular disk)
+def projected_disk_profile(x, amplitude, radius, baseline):
+    y = np.zeros_like(x)
+    inside = np.abs(x) <= radius
+    y[inside] = amplitude * np.sqrt(1 - (x[inside] / radius) ** 2) + baseline
+    y[~inside] = baseline
+    return y
+
+# Fix disk extension to keep same peak intensity
+def extend_disk_fixed_peak(amplitude, radius, baseline, new_baseline):
+    y_peak = amplitude + baseline
+    new_amplitude = y_peak - new_baseline
+
+    # New radius to reach new_baseline at edges
+    new_radius = radius / np.sqrt(1 - ((new_baseline - baseline) / amplitude)**2)
+
+    # FWHM: find width at half-max
+    half_max = (y_peak + new_baseline) / 2
+    rel_height_half = (half_max - new_baseline) / new_amplitude
+    fwhm_radius = new_radius * np.sqrt(1 - rel_height_half**2)
+    fwhm = 2 * fwhm_radius
+
+    return new_radius, fwhm, new_amplitude

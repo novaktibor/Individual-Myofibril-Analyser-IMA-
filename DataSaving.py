@@ -6,20 +6,23 @@ import matplotlib.pyplot as plt
 import math
 import WidthCalculation
 import cmath
-from openpyxl import load_workbook
+
 
 
 
 
 ### function to save the data as an excel file in tha same folder where the images was ###
-def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
+def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process, number):
 
     path = filepath['path']
     Allfilename = filepath['Allfilename']
     num_files = len(AllLengthData)
 
     # Excel file path
-    output_file = os.path.join(path, 'Results.xlsx')
+    if number == 0:
+        output_file = os.path.join(path, 'Results.xlsx')
+    else:
+        output_file = os.path.join(path, 'Results' + str(number) + '.xlsx')
 
     allpeakdistancesNM = []
     FirstSheetData = pd.DataFrame()
@@ -29,8 +32,6 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
 
     if not os.path.exists(path):
         os.mkdir(path)
-
-
 
     for i, (LengthData, filename) in enumerate(zip(AllLengthData, Allfilename)):
 
@@ -70,7 +71,7 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
 
         # Converting the information into pandas dataframe to write excel file
         peakcordsdf = pd.DataFrame(gauspeaks)
-        print(peakdistances.shape)
+        #print(peakdistances.shape)
         peakdistancesdf = pd.DataFrame(peakdistances)
 
         #Calculating the distance into NM from the pixel
@@ -101,14 +102,9 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
         else:
             SecondSheetData = pd.concat([SecondSheetData, SinglefileData], axis=1)
 
-            if i == num_files - 1:
-                meanpeakdistance = pd.concat(allpeakdistancesNM).mean()
-                SecondSheetData = pd.concat([SecondSheetData, meanpeakdistance], axis=1)
-
-
     #for WidthData, filename in zip(AllWidthData, Allfilename):
 
-    if what_to_process == "Length and Width":
+    if what_to_process == "Individual L+W" or what_to_process == "Multiple Myofbiril L+w":
 
         for i, (WidthData, filename) in enumerate(zip(AllWidthData, Allfilename)):
             SingleSheetData = pd.DataFrame()
@@ -169,17 +165,18 @@ def excelsaving(AllLengthData, AllWidthData, filepath, what_to_process):
             else:
                 FourthSheetData = pd.concat([FourthSheetData, SingleSheetData2], axis=0)
 
-        # Saving sequentially to separate sheets
-        save_data_to_multiple_sheets(output_file, "LengthHistogram", FirstSheetData)
-        save_data_to_multiple_sheets(output_file, "LengthResults", SecondSheetData)
+    # Final export to Excel — safe batch-wise write
+    with pd.ExcelWriter(output_file, engine='openpyxl', mode='w') as writer:
+        FirstSheetData.to_excel(writer, sheet_name='LengthHistogram', index=False)
+        SecondSheetData.to_excel(writer, sheet_name='LengthResults', index=False)
 
-        if what_to_process == "Length and Width":
-            save_data_to_multiple_sheets(output_file, "WidthHistogram", ThirdSheetData)
-            save_data_to_multiple_sheets(output_file, "WidthResults", FourthSheetData)
+        if what_to_process in ["Individual L+W", "Multiple Myofbiril L+w"]:
+            ThirdSheetData.to_excel(writer, sheet_name='WidthHistogram', index=False)
+            FourthSheetData.to_excel(writer, sheet_name='WidthResults', index=False)
 
 
 ### Function to save the fitted spline, the histogram with the found peaks, gaussian fitting as an image
-def imagesave(Data, image, filepath,processing_mode_var, mode):
+def imagesave(Data, image, filepath,processing_mode_var, number, mode):
 
     filename = filepath['filename']
     path = filepath['path']
@@ -265,17 +262,21 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
         # Adjust layout to prevent overlap
         plt.tight_layout()
 
-        plt.savefig(path + '/foundpeaks' + filename + 'CentroidfindingandFittingData' + '.png', dpi=300)
-
+        if number == 0:
+            plt.savefig(path + '/foundpeaks' + filename + 'CentroidfindingandFittingData' + '.png', dpi=300)
+        else:
+            plt.savefig(path + '/foundpeaks' + filename + 'CentroidfindingandFittingData' + str(number) + '.png', dpi=300)
         # Show the plot
         #plt.show()
-        plt.clf()
+        plt.close('all')
 
 
     elif mode == 'width':
 
         ## initializa the data to use
 
+        filename = filepath['filename']
+        path = filepath['path']
         sumphall = image
         ystartall = []
         yendall = []
@@ -283,11 +284,11 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
 
         #  setting up the parameters
         subplotrowcount = 1  # number of rows
-        b = len(Data) # number figure data
-        c = 1
+        b = len(Data)  # number figure data
+        subplotcolumcount = b + 1
 
-        plt.figure(figsize=(20, 10))
-        plt.title('Width measuring results')
+        fig, axes = plt.subplots(subplotrowcount, subplotcolumcount, figsize=(20, 10))
+        fig.suptitle('Width measuring results')
 
         # loop through to make subplot form the individual fittings
         for i in range(b):
@@ -310,11 +311,10 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
             x_endall = xystartendall['x_endall']
             perpendicular_lines = xystartendall['perpendicular_lines']
 
-            #Collecting all the y_startall, y_endall, xall to plot in the end the selected sarcomeres with the rectangel overlaying it
+            # Collecting all the y_startall, y_endall, xall to plot in the end the selected sarcomeres with the rectangel overlaying it
             ystartall.append(y_startall)
             yendall.append(y_endall)
             xalll.append(xall)
-
 
             # Calculating data for the plotting
             # TODO: finer sampling for the unconvolved??
@@ -325,7 +325,9 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
             model_settings['samplingSettings'] = modelFunctionStruct['samplingSettings']
             model_settings['convolutionSettings'] = modelFunctionStruct['convolutionSettings']
             model_settings['backgroundFlag'] = modelFunctionStruct['backgroundFlag']
-            sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = WidthCalculation.visualization_calculate(histogramStruct, model_function_parameters, model_settings)
+
+            sample_x, sample_y_fitted_unconvolved, sample_y_fitted_convolved = WidthCalculation.visualization_calculate(
+                histogramStruct, model_function_parameters, model_settings)
 
             # Passing the settings
             histCounts = histogramStruct['histCounts']
@@ -356,95 +358,64 @@ def imagesave(Data, image, filepath,processing_mode_var, mode):
             bgN = (len(histEdges) - 1) * densFuncBG_fitted
             locN = np.sum(histCounts)
             locVar_bgVar_subs = (locVar * locN - bgVar * bgN) / (
-                        locN - bgN)  # subtracting the variance of the background
+                    locN - bgN)  # subtracting the variance of the background
             lineVar = locVar_bgVar_subs - convFuncVar
             lineSTD = cmath.sqrt(lineVar)
 
             # Calculating the line diameter from the variance of corrected variance of the distances
             FWHM_from_var_Gauss = 2 * np.sqrt(2 * np.log(2)) * lineSTD
             FWHM_from_var_disk = 2 * np.sqrt(3) * lineSTD
+            lineLength = densFuncWidth_fitted / 1000 / 0.866025403784438
 
-            labelText = ['Width fit: {:.4g} nm'.format(densFuncWidth_fitted),
-                         'Width var: {:.4g}/{:.4g} nm'.format(FWHM_from_var_Gauss, FWHM_from_var_disk),
-                         'residual: {:.4g}'.format(FVAL)]
+            labelText = ['Width fit: {:.4g} µm'.format(lineLength),
+                         # 'Width var: {:.4g}/{:.4g} nm'.format(FWHM_from_var_Gauss, FWHM_from_var_disk),
+                         # 'residual: {:.4g}'.format(FVAL)
+                         ]
 
-
-            #Plotting the data
+            # Plotting the data
             modelFuncType = modelFunctionStruct['modelFuncType']
+            ax = axes[i]
 
-            plt.subplot(subplotrowcount, subplotcolumncount, i + 1)
-
-            plt.hist(histEdges[:-1], bins=histEdges, weights=histCounts, edgecolor='black', alpha=0.5)
-            plt.plot(sample_x, sample_y_fitted_unconvolved, linewidth=1.5, color='red',
+            ax.hist(histEdges[:-1], bins=histEdges, weights=histCounts, edgecolor='black', alpha=0.5)
+            ax.plot(sample_x, sample_y_fitted_unconvolved, linewidth=1.5, color='red',
                     label='Fitted Model Function')
-            plt.plot(sample_x, sample_y_fitted_convolved, color=[0.9290, 0.6940, 0.1250], linewidth=1.5,
+            ax.plot(sample_x, sample_y_fitted_convolved, color=[0.9290, 0.6940, 0.1250], linewidth=1.5,
                     label='Fitted Convolved Function')
-            plt.title(f'Hist of distances, {modelFuncType} fit, {linkerType} linker, {b}')
-            plt.xlabel('distance [nm]')
-            plt.ylabel('N of localizations')
-            plt.text(0.02, 0.98, '\n'.join(labelText), ha='left', va='top',
-                     transform=plt.gca().transAxes)  # Fixed coordinates
-            plt.legend(fontsize='small')
+
+            # Conditionally overlay extended fit if number != 0
+            if number != 0:
+                extended_data = Data2['extendedModelFunction']
+                model_center = Data2['modelFunctionStruct']['modelFunctionSettings']['position']
+
+                # Shift x_range to match the model's peak position
+                shifted_x_range = extended_data['x_range'] + model_center
+
+                ax.plot(shifted_x_range, extended_data['intensity'],
+                        label='Extended (Same Peak)', lw=2, linestyle='--')
+
+
+            ax.set_title(f'Hist of distances, {modelFuncType} fit, {linkerType} linker, {b}')
+            ax.set_xlabel('distance [nm]')
+            ax.set_ylabel('Pixel intensity')
+            ax.text(0.02, 0.98, '\n'.join(labelText), ha='left', va='top',
+                    transform=ax.transAxes)  # Fixed coordinates
+            ax.legend(fontsize='small')
 
             if i == (b - 1):
                 # Add the last subplot for image display
-                plt.subplot(subplotrowcount, subplotcolumncount, i + 2)
+                ax_img = axes[i + 1]
 
                 plt.imshow(sumphall, cmap='gray')
                 for i in range(len(y_startall)):
-                    plt.plot([x_startall[i], x_endall[i]], [y_startall[i], y_endall[i]], 'r', alpha=.5)
+                    ax_img.plot([x_startall[i], x_endall[i]], [y_startall[i], y_endall[i]], 'r', alpha=.5)
+                ax_img.axis("off")
+                if number == 0:
+                    plt.savefig(path + '/' + filename + 'ChosenSarcomeresAndWidth' + '.png', dpi=300)
+                else:
+                    plt.savefig(path + '/' + filename + 'ChosenSarcomeresAndWidth' + str(number) + '.png', dpi=300)
 
-                plt.savefig(path + '/' + filename + 'ChosenSarcomeresAndWidth' + '.png', dpi=300)
-
-                #plt.show()
-                plt.clf()
-
-
-#Calculating data for the width figures
-
-def plotDistribution(histogramStruct, modelFunctionStruct):
-# Deprecated!!!
-    # Extracting settings
-    histCounts = histogramStruct['histCounts']
-    histEdges = histogramStruct['histEdges']
-    hist_X = (histEdges[:-1] + histEdges[1:]) / 2
-
-    sampleType = modelFunctionStruct['sampleType']
-    modelFuncType = modelFunctionStruct['modelFuncType']
-    modelFunctionSettings = modelFunctionStruct['modelFunctionSettings']
-    samplingSettings = modelFunctionStruct['samplingSettings']
-    convolutionSettings = modelFunctionStruct['convolutionSettings']
-    linkerType = convolutionSettings['linkerType']
-
-    # Calculate the fitted distribution (convolved model function)
-    sample_Y_convolved_fitted = WidthCalculation.calculateDensityDistribution(sampleType, modelFuncType,
-                                                                                 modelFunctionSettings,
-                                                                                 samplingSettings, convolutionSettings)
-
-    # Do not extend the region for the unconvolved model function
-    samplingSettings['convRad_N'] = 0
-
-    modelFunc_sampling_X_binningRegion = WidthCalculation.sampling_centers(samplingSettings)
-
-    # Calculate the model function
-    convolutionSettings['convFunc'] = 1
-    samplingSettings['binRefinement'] = 1
-    samplingSettings['histBinN'] = len(modelFunc_sampling_X_binningRegion)
-
-    sample_Y_fitted = WidthCalculation.calculateDensityDistribution(sampleType, modelFuncType, modelFunctionSettings,
-                                                                       samplingSettings,
-                                                                       convolutionSettings)
-    model_function_parameters = modelFunctionStruct['modelFunctionSettings']
-    model_settings = {}
-    model_settings['sampleType'] = modelFunctionStruct['sampleType']
-    model_settings['modelFuncType'] = modelFunctionStruct['modelFuncType']
-    model_settings['samplingSettings'] = modelFunctionStruct['samplingSettings']
-    model_settings['convolutionSettings'] = modelFunctionStruct['convolutionSettings']
-    model_settings['backgroundFlag'] = modelFunctionStruct['backgroundFlag']
-    sample_Y_fitted, _ = WidthCalculation.calculateDensityDistribution(modelFunc_sampling_X_binningRegion, model_function_parameters, model_settings)
-
-    return histEdges, histCounts, modelFunc_sampling_X_binningRegion, sample_Y_fitted, hist_X, sample_Y_convolved_fitted, modelFuncType, linkerType
-
+                # plt.show()
+                plt.close('all')
 
 
 def save_data_to_multiple_sheets(output_file, sheet_name, data):
